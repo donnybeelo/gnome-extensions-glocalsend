@@ -386,6 +386,7 @@ export default class LocalSendCompanionExtension extends Extension {
 				? "Listening for nearby devices"
 				: `${peers.length} nearby device${peers.length === 1 ? "" : "s"}`;
 
+		this._indicator._indicator.visible = enabled;
 		this._indicator.visible = enabled;
 		this._indicator.toggle.checked = enabled;
 		this._indicator.toggle.subtitle = subtitle;
