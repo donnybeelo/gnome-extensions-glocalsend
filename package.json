@@ -1,7 +1,7 @@
 {
   "name": "glocalsend",
   "version": "0.0.0",
-  "description": "GNOME Shell extension for LocalSend using the LocalSend protocol",
+  "description": "A LocalSend client integrated into the GNOME Shell",
   "type": "module",
   "private": false,
   "repository": {
