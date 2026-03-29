@@ -17,7 +17,7 @@ schemas/gschemas.compiled: schemas/org.gnome.shell.extensions.$(NAME).gschema.xm
 $(NAME).zip: dist/extension.js dist/prefs.js schemas/gschemas.compiled
 	@cp -r schemas dist/
 	@if [ -d locale ]; then cp -r locale dist/; fi
-	@cp metadata.json dist/
+	@cp metadata.json icon-symbolic.svg dist/
 	@(cd dist && zip ../$(NAME).zip -9r .)
 
 pack: $(NAME).zip

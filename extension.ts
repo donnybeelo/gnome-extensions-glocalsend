@@ -18,7 +18,8 @@ import {
 	LocalSendService,
 } from "./localsend.js";
 
-const INDICATOR_ICON = "network-transmit-receive-symbolic";
+const EXTENSION_DIR = import.meta.url.replace(/file:\/\/(.*)\/[^/]+$/, "$1");
+const INDICATOR_ICON = `file://${EXTENSION_DIR}/icon-symbolic.svg`;
 
 const FileChooserXml = `
 <node>
@@ -60,7 +61,7 @@ const LocalSendIndicator = GObject.registerClass(
 			super();
 
 			this._indicator = this._addIndicator();
-			this._indicator.icon_name = INDICATOR_ICON;
+			this._indicator.gicon = Gio.icon_new_for_string(INDICATOR_ICON) as any;
 			this._indicator.visible = false;
 
 			this.toggle = new LocalSendToggle();

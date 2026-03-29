@@ -1,18 +1,13 @@
 {
-  "compilerOptions": {
-    "module": "NodeNext",
-    "moduleResolution": "NodeNext",
-    "outDir": "./dist",
-    "sourceMap": false,
-    "strict": true,
-    "skipLibCheck": true,
-    "target": "ES2023",
-    "lib": [
-      "ES2023"
-    ],
-  },
-  "include": [
-    "ambient.d.ts",
-    "*.ts"
-  ],
+	"compilerOptions": {
+		"module": "NodeNext",
+		"moduleResolution": "NodeNext",
+		"outDir": "./dist",
+		"sourceMap": false,
+		"strict": true,
+		"skipLibCheck": true,
+		"target": "ES2023",
+		"lib": ["ES2023"]
+	},
+	"include": ["ambient.d.ts", "*.ts", "icon-symbolic.svg"],
 }
