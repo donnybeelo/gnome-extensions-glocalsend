@@ -1,15 +1,8 @@
 {
-    "name": "LocalSend companion",
-    "description": "A GNOME Shell extension for LocalSend using the LocalSend protocol",
-    "uuid": "localsend-companion@donnybeelo.github.com",
-    "url": "https://github.com/donnybeelo/gnome-extensions-localsend-companion",
-    "settings-schema": "org.gnome.shell.extensions.localsend-companion",
-    "shell-version": [
-        "45",
-        "46",
-        "47",
-        "48",
-        "49",
-        "50"
-    ]
+	"name": "GLocalSend",
+	"description": "A GNOME Shell extension for LocalSend using the LocalSend protocol",
+	"uuid": "glocalsend@donnybeelo.github.com",
+	"url": "https://github.com/donnybeelo/gnome-extensions-glocalsend",
+	"settings-schema": "org.gnome.shell.extensions.glocalsend",
+	"shell-version": ["45", "46", "47", "48", "49", "50"]
 }

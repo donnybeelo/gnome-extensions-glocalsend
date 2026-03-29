@@ -1,4 +1,4 @@
-NAME=localsend-companion
+NAME=glocalsend
 DOMAIN=donnybeelo.github.com
 
 .PHONY: all pack install clean

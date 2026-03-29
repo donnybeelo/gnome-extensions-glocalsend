@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <schemalist>
-  <schema id="org.gnome.shell.extensions.localsend-companion" path="/org/gnome/shell/extensions/localsend-companion/">
+  <schema id="org.gnome.shell.extensions.glocalsend" path="/org/gnome/shell/extensions/glocalsend/">
     <key name="alias" type="s">
       <default>''</default>
       <summary>Device name</summary>

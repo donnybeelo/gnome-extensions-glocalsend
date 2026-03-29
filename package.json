@@ -1,18 +1,18 @@
 {
-  "name": "localsend-companion",
+  "name": "glocalsend",
   "version": "0.0.0",
   "description": "GNOME Shell extension for LocalSend using the LocalSend protocol",
   "type": "module",
   "private": false,
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/donnybeelo/gnome-extensions-localsend-companion.git"
+    "url": "git+https://github.com/donnybeelo/gnome-extensions-glocalsend.git"
   },
   "author": "Daniel Elia <d.elia@outlook.com>",
   "bugs": {
-    "url": "https://github.com/donnybeelo/gnome-extensions-localsend-companion/issues"
+    "url": "https://github.com/donnybeelo/gnome-extensions-glocalsend/issues"
   },
-  "homepage": "https://github.com/donnybeelo/gnome-extensions-localsend-companion#readme",
+  "homepage": "https://github.com/donnybeelo/gnome-extensions-glocalsend#readme",
   "sideEffects": false,
   "scripts": {
     "build": "tsc"
