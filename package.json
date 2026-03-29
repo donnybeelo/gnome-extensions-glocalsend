@@ -1,7 +1,7 @@
 {
   "name": "localsend-companion",
   "version": "0.0.0",
-  "description": " GNOME Extension frontend for LocalSend",
+  "description": "GNOME Shell extension for LocalSend using the LocalSend protocol",
   "type": "module",
   "private": false,
   "repository": {

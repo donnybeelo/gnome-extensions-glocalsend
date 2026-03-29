@@ -1,3 +1,4 @@
 node_modules/
 gschemas.compiled
 localsend-companion.zip
+dist/

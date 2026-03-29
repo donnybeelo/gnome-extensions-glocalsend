@@ -4,450 +4,515 @@ import GLib from "gi://GLib";
 import Gtk from "gi://Gtk";
 import St from "gi://St";
 import Shell from "gi://Shell";
+import GObject from "gi://GObject";
 
 import * as Main from "resource:///org/gnome/shell/ui/main.js";
 import * as QuickSettings from "resource:///org/gnome/shell/ui/quickSettings.js";
+import * as PopupMenu from "resource:///org/gnome/shell/ui/popupMenu.js";
 import * as ModalDialog from "resource:///org/gnome/shell/ui/modalDialog.js";
 import { Extension } from "resource:///org/gnome/shell/extensions/extension.js";
 
+import { formatBytes, KEY_AUTO_ACCEPT, SETTINGS_SCHEMA } from "./common.js";
 import {
-	DEFAULT_DISCOVERABLE_DURATION_MINUTES,
-	DEFAULT_LAUNCHER_COMMAND,
-	KEY_DISCOVERABLE_DURATION_MINUTES,
-	KEY_LAUNCHER_COMMAND,
-	formatRemainingTime,
-	parseCommandLine,
-} from "./common.js";
+	type IncomingTransferRequest,
+	type LocalSendPeer,
+	LocalSendService,
+} from "./localsend.js";
 
 const INDICATOR_ICON = "network-transmit-receive-symbolic";
 
-class TextPromptDialog extends ModalDialog.ModalDialog {
-	private _titleLabel: St.Label;
-	private _descriptionLabel: St.Label;
-	private _errorLabel: St.Label;
-	private _entry: St.Entry;
-	private _resolve: ((value: string | null) => void) | null = null;
+const LocalSendToggle = GObject.registerClass(
+	class LocalSendToggle extends QuickSettings.QuickMenuToggle {
+		constructor() {
+			super({
+				title: "LocalSend",
+				subtitle: "Starting",
+				gicon: Gio.icon_new_for_string(INDICATOR_ICON) as any,
+				menuEnabled: true,
+			});
+		}
+	},
+);
 
-	constructor() {
-		super({
-			shellReactive: true,
-			actionMode: Shell.ActionMode.ALL,
-			shouldFadeIn: true,
-			shouldFadeOut: true,
-			destroyOnClose: false,
-		});
+const LocalSendIndicator = GObject.registerClass(
+	class LocalSendIndicator extends QuickSettings.SystemIndicator {
+		_indicator: St.Icon;
+		toggle: InstanceType<typeof LocalSendToggle>;
 
-		const content = new St.BoxLayout({
-			vertical: true,
-			x_expand: true,
-			y_expand: true,
-			style_class: "prompt-dialog-content",
-		});
+		constructor() {
+			super();
 
-		this._titleLabel = new St.Label({
-			style_class: "prompt-dialog-title",
-			x_align: Clutter.ActorAlign.START,
-			y_align: Clutter.ActorAlign.START,
-		});
+			this._indicator = this._addIndicator();
+			this._indicator.icon_name = INDICATOR_ICON;
+			this._indicator.visible = false;
 
-		this._descriptionLabel = new St.Label({
-			style_class: "prompt-dialog-description",
-			x_align: Clutter.ActorAlign.START,
-			y_align: Clutter.ActorAlign.START,
-		});
+			this.toggle = new LocalSendToggle();
+			this.quickSettingsItems.push(this.toggle);
+		}
+		destroy() {
+			this.quickSettingsItems?.forEach((i) => {
+				i.destroy();
+			});
+			this._indicator.destroy();
+			super.destroy();
+		}
+	},
+);
 
-		this._entry = new St.Entry({
-			hint_text: "Type text to send",
-			x_expand: true,
-		});
+const TextPromptDialog = GObject.registerClass(
+	class TextPromptDialog extends ModalDialog.ModalDialog {
+		private _titleLabel: St.Label;
+		private _descriptionLabel: St.Label;
+		private _errorLabel: St.Label;
+		private _entry: St.Entry;
+		private _resolve: ((value: string | null) => void) | null = null;
+		private _activateSignalId: number | null = null;
 
-		this._errorLabel = new St.Label({
-			style_class: "prompt-dialog-error",
-			x_align: Clutter.ActorAlign.START,
-			y_align: Clutter.ActorAlign.START,
-		});
+		constructor() {
+			super({
+				shellReactive: true,
+				actionMode: Shell.ActionMode.ALL,
+				shouldFadeIn: true,
+				shouldFadeOut: true,
+				destroyOnClose: false,
+			});
 
-		content.add_child(this._titleLabel);
-		content.add_child(this._descriptionLabel);
-		content.add_child(this._entry);
-		content.add_child(this._errorLabel);
-		this.contentLayout.add_child(content);
-		this.setInitialKeyFocus(this._entry);
+			const content = new St.BoxLayout({
+				vertical: true,
+				x_expand: true,
+				y_expand: true,
+				style_class: "prompt-dialog-content",
+			});
 
-		this._entry.clutter_text.connect("activate", () => {
-			this._submit();
-		});
+			this._titleLabel = new St.Label({
+				style_class: "prompt-dialog-title",
+				x_align: Clutter.ActorAlign.START,
+				y_align: Clutter.ActorAlign.START,
+			});
 
-		this.setButtons([
-			{
-				label: "Cancel",
-				action: () => {
-					this._resolvePrompt(null);
-				},
-			},
-			{
-				label: "Send",
-				default: true,
-				action: () => {
+			this._descriptionLabel = new St.Label({
+				style_class: "prompt-dialog-description",
+				x_align: Clutter.ActorAlign.START,
+				y_align: Clutter.ActorAlign.START,
+			});
+
+			this._entry = new St.Entry({
+				hint_text: "Type text to send",
+				x_expand: true,
+			});
+
+			this._errorLabel = new St.Label({
+				style_class: "prompt-dialog-error",
+				x_align: Clutter.ActorAlign.START,
+				y_align: Clutter.ActorAlign.START,
+			});
+
+			content.add_child(this._titleLabel);
+			content.add_child(this._descriptionLabel);
+			content.add_child(this._entry);
+			content.add_child(this._errorLabel);
+			this.contentLayout.add_child(content);
+			this.setInitialKeyFocus(this._entry);
+
+			this._activateSignalId = this._entry.clutter_text.connect(
+				"activate",
+				() => {
 					this._submit();
 				},
-			},
-		]);
-	}
+			);
 
-	prompt(
-		title: string,
-		description: string,
-		initialText = "",
-	): Promise<string | null> {
-		if (this._resolve !== null) {
+			this.setButtons([
+				{
+					label: "Cancel",
+					action: () => {
+						this._resolvePrompt(null);
+					},
+				},
+				{
+					label: "Send",
+					default: true,
+					action: () => {
+						this._submit();
+					},
+				},
+			]);
+		}
+
+		prompt(
+			title: string,
+			description: string,
+			initialText = "",
+		): Promise<string | null> {
+			if (this._resolve !== null) this._resolvePrompt(null);
+
+			this._titleLabel.text = title;
+			this._descriptionLabel.text = description;
+			this._errorLabel.text = "";
+			this._entry.text = initialText;
+
+			return new Promise<string | null>((resolve) => {
+				this._resolve = resolve;
+				this.open();
+				this.setInitialKeyFocus(this._entry);
+				this._entry.grab_key_focus();
+			});
+		}
+
+		override destroy(): void {
+			if (this._activateSignalId !== null) {
+				this._entry.clutter_text.disconnect(this._activateSignalId);
+				this._activateSignalId = null;
+			}
+
 			this._resolvePrompt(null);
+			super.destroy();
 		}
 
-		this._titleLabel.text = title;
-		this._descriptionLabel.text = description;
-		this._errorLabel.text = "";
-		this._entry.text = initialText;
+		private _submit(): void {
+			const text = this._entry.text;
+			if (text.trim().length === 0) {
+				this._errorLabel.text = "Enter text before sending.";
+				this._entry.grab_key_focus();
+				return;
+			}
 
-		return new Promise<string | null>((resolve) => {
-			this._resolve = resolve;
-			this.open();
-			this.setInitialKeyFocus(this._entry);
-			this._entry.grab_key_focus();
-		});
-	}
-
-	override destroy(): void {
-		this._resolvePrompt(null);
-		super.destroy();
-	}
-
-	private _submit(): void {
-		const text = this._entry.text;
-		if (text.trim().length === 0) {
-			this._errorLabel.text = "Enter text before sending.";
-			this._entry.grab_key_focus();
-			return;
+			this._resolvePrompt(text);
 		}
 
-		this._resolvePrompt(text);
-	}
+		private _resolvePrompt(value: string | null): void {
+			const resolve = this._resolve;
+			this._resolve = null;
 
-	private _resolvePrompt(value: string | null): void {
-		const resolve = this._resolve;
-		this._resolve = null;
+			if (resolve !== null) resolve(value);
 
-		if (resolve !== null) resolve(value);
+			this.close();
+		}
+	},
+);
 
-		this.close();
-	}
-}
+const IncomingTransferDialog = GObject.registerClass(
+	class IncomingTransferDialog extends ModalDialog.ModalDialog {
+		private _summaryLabel: St.Label;
+		private _filesLabel: St.Label;
+		private _resolve: ((value: boolean) => void) | null = null;
 
-class LocalSendIndicator extends QuickSettings.SystemIndicator {
-	menu: QuickSettings.QuickToggleMenu;
+		constructor() {
+			super({
+				shellReactive: true,
+				actionMode: Shell.ActionMode.ALL,
+				shouldFadeIn: true,
+				shouldFadeOut: true,
+				destroyOnClose: false,
+			});
 
-	constructor() {
-		super();
+			const content = new St.BoxLayout({
+				vertical: true,
+				x_expand: true,
+				y_expand: true,
+				style_class: "prompt-dialog-content",
+			});
 
-		const indicator = this._addIndicator();
-		indicator.icon_name = INDICATOR_ICON;
+			this._summaryLabel = new St.Label({
+				style_class: "prompt-dialog-title",
+				x_align: Clutter.ActorAlign.START,
+				y_align: Clutter.ActorAlign.START,
+			});
 
-		this.menu = new QuickSettings.QuickToggleMenu(this);
-		this.menu.setHeader(
-			Gio.icon_new_for_string(INDICATOR_ICON),
-			"LocalSend",
-			"Ready to receive",
-		);
-	}
-}
+			this._filesLabel = new St.Label({
+				style_class: "prompt-dialog-description",
+				x_align: Clutter.ActorAlign.START,
+				y_align: Clutter.ActorAlign.START,
+			});
+
+			content.add_child(this._summaryLabel);
+			content.add_child(this._filesLabel);
+			this.contentLayout.add_child(content);
+
+			this.setButtons([
+				{
+					label: "Decline",
+					action: () => {
+						this._resolvePrompt(false);
+					},
+				},
+				{
+					label: "Accept",
+					default: true,
+					action: () => {
+						this._resolvePrompt(true);
+					},
+				},
+			]);
+		}
+
+		prompt(
+			sender: LocalSendPeer,
+			request: IncomingTransferRequest,
+		): Promise<boolean> {
+			if (this._resolve !== null) this._resolvePrompt(false);
+
+			this._summaryLabel.text = `${sender.alias} wants to send ${request.files.length} file${request.files.length === 1 ? "" : "s"}.`;
+			this._filesLabel.text = request.files
+				.map((file) => `${file.fileName} (${formatBytes(file.size)})`)
+				.join("\n");
+
+			return new Promise<boolean>((resolve) => {
+				this._resolve = resolve;
+				this.open();
+			});
+		}
+
+		override destroy(): void {
+			this._resolvePrompt(false);
+			super.destroy();
+		}
+
+		private _resolvePrompt(value: boolean): void {
+			const resolve = this._resolve;
+			this._resolve = null;
+
+			if (resolve !== null) resolve(value);
+
+			this.close();
+		}
+	},
+);
 
 export default class LocalSendCompanionExtension extends Extension {
-	private _settings!: Gio.Settings;
-	private _indicator: LocalSendIndicator | null = null;
-	private _discoverableUntil = 0;
-	private _discoverableTimeoutId: number | null = null;
-	private _discoverableProcessWatchId: number | null = null;
-	private _promptDialog: TextPromptDialog | null = null;
+	private _settings!: Gio.Settings | null;
+	private _indicator: InstanceType<typeof LocalSendIndicator> | null = null;
+	private _indicatorClickedSignalId: number | null = null;
+	private _service: LocalSendService | null = null;
+	private _textPromptDialog: InstanceType<typeof TextPromptDialog> | null =
+		null;
+	private _incomingDialog: InstanceType<typeof IncomingTransferDialog> | null =
+		null;
 
 	enable(): void {
-		this._settings = this.getSettings() as unknown as Gio.Settings;
+		this._settings = this.getSettings(
+			SETTINGS_SCHEMA,
+		) as unknown as Gio.Settings;
 
-		this._indicator = new LocalSendIndicator();
-		this._indicator.connect("clicked", () => {
-			void this._runUserAction("Toggle discoverability", async () => {
-				await this.toggleDiscoverability();
-			});
+		this._service = new LocalSendService(this._settings, {
+			onStateChanged: () => {
+				this._syncIndicator();
+			},
+			onNotification: (summary, body, actionUri) => {
+				const notification = Main.notify(summary, body);
+				if (actionUri !== undefined) {
+					void Gio.AppInfo.launch_default_for_uri(actionUri, null);
+				}
+			},
+			onIncomingTransfer: async (request) => {
+				if (this._settings!.get_boolean(KEY_AUTO_ACCEPT)) return true;
+
+				const dialog = this._ensureIncomingDialog();
+				return await dialog.prompt(request.sender, request);
+			},
 		});
 
-		this._indicator.menu.addAction(
-			"Toggle discoverability",
+		this._indicator = new LocalSendIndicator();
+		this._indicatorClickedSignalId = this._indicator.toggle.connect(
+			"clicked",
 			() => {
-				void this._runUserAction("Toggle discoverability", async () => {
-					await this.toggleDiscoverability();
+				void this._runUserAction("Toggle LocalSend", async () => {
+					this._service?.toggleEnabled();
 				});
 			},
-			Gio.icon_new_for_string(INDICATOR_ICON) as any,
-		);
-
-		this._indicator.menu.addAction(
-			"Send files...",
-			() => {
-				void this.sendFiles();
-			},
-			Gio.icon_new_for_string("folder-open-symbolic") as any,
-		);
-
-		this._indicator.menu.addAction(
-			"Send clipboard text",
-			() => {
-				void this.sendClipboardText();
-			},
-			Gio.icon_new_for_string("edit-paste-symbolic") as any,
-		);
-
-		this._indicator.menu.addAction(
-			"Type text...",
-			() => {
-				void this.promptAndSendText();
-			},
-			Gio.icon_new_for_string("insert-text-symbolic") as any,
 		);
 
 		Main.panel.statusArea.quickSettings.addExternalIndicator(
 			this._indicator as any,
 		);
+
+		// Keep LocalSend disabled on startup until the user explicitly enables it.
+		// The first toggle-on will auto-disable after 10 minutes.
+		this._service?.stop();
 		this._syncIndicator();
 	}
 
 	disable(): void {
-		this._stopDiscoverableSession(false);
+		this._service?.stop();
+		this._service = null;
 
-		this._promptDialog?.destroy();
-		this._promptDialog = null;
+		this._textPromptDialog?.destroy();
+		this._textPromptDialog = null;
+
+		this._incomingDialog?.destroy();
+		this._incomingDialog = null;
+
+		if (this._indicator !== null && this._indicatorClickedSignalId !== null) {
+			this._indicator.toggle.disconnect(this._indicatorClickedSignalId);
+			this._indicatorClickedSignalId = null;
+		}
+
+		if (this._indicator !== null) {
+			(Main.panel.statusArea.quickSettings as any)._removeItems?.([
+				this._indicator.toggle,
+			]);
+		}
 
 		this._indicator?.destroy();
 		this._indicator = null;
+		this._settings = null;
 	}
 
-	private async toggleDiscoverability(): Promise<void> {
-		if (this._isDiscoverable()) {
-			this._stopDiscoverableSession(false);
-			return;
-		}
+	private _syncIndicator(): void {
+		if (this._indicator === null || this._service === null) return;
 
-		this._startDiscoverableSession();
-	}
+		const enabled = this._service.enabled;
+		const peers = this._service.peers;
+		const subtitle = enabled ? "Discoverable" : null;
+		const subheader = !enabled
+			? "Sharing paused"
+			: peers.length === 0
+				? "Listening for nearby devices"
+				: `${peers.length} nearby device${peers.length === 1 ? "" : "s"}`;
 
-	private _isDiscoverable(): boolean {
-		return this._discoverableUntil > Date.now();
-	}
+		this._indicator.visible = enabled;
+		this._indicator.toggle.checked = enabled;
+		this._indicator.toggle.subtitle = subtitle;
+		this._indicator.toggle.menu.setHeader(
+			Gio.icon_new_for_string(INDICATOR_ICON) as any,
+			"LocalSend",
+			subheader,
+		);
 
-	private _startDiscoverableSession(): void {
-		const durationMinutes =
-			this._settings.get_int(KEY_DISCOVERABLE_DURATION_MINUTES) ||
-			DEFAULT_DISCOVERABLE_DURATION_MINUTES;
-		const expiresAt = Date.now() + durationMinutes * 60_000;
+		this._indicator.toggle.menu.removeAll();
 
-		this._launchLocalSend([], { hidden: true, watchExit: true });
-
-		this._discoverableUntil = expiresAt;
-		this._syncIndicator();
-		Main.notify(`LocalSend is discoverable for ${durationMinutes} minutes`);
-
-		this._discoverableTimeoutId = GLib.timeout_add_seconds(
-			GLib.PRIORITY_DEFAULT,
-			1,
+		this._indicator.toggle.menu.addAction(
+			"Refresh nearby devices",
 			() => {
-				if (!this._isDiscoverable()) {
-					this._discoverableTimeoutId = null;
-					this._stopDiscoverableSession(true);
-					return GLib.SOURCE_REMOVE;
+				this._service?.refreshPeers();
+			},
+			Gio.icon_new_for_string("view-refresh-symbolic") as any,
+		);
+
+		if (enabled && peers.length > 0) {
+			for (const peer of peers) {
+				const peerItem = new PopupMenu.PopupSubMenuMenuItem(peer.alias, true);
+				const peerIcon = peerItem.icon;
+				if (peerIcon !== undefined) {
+					peerIcon.gicon = Gio.icon_new_for_string(
+						"network-workgroup-symbolic",
+					) as any;
 				}
 
-				this._syncIndicator();
-				return GLib.SOURCE_CONTINUE;
+				peerItem.menu.addAction(
+					"Send files",
+					() => {
+						void this._sendFilesToPeer(peer);
+					},
+					Gio.icon_new_for_string("document-send-symbolic") as any,
+				);
+
+				peerItem.menu.addAction(
+					"Send clipboard text",
+					() => {
+						void this._sendClipboardTextToPeer(peer);
+					},
+					Gio.icon_new_for_string("edit-paste-symbolic") as any,
+				);
+
+				peerItem.menu.addAction(
+					"Type text",
+					() => {
+						void this._promptAndSendText(peer);
+					},
+					Gio.icon_new_for_string("insert-text-symbolic") as any,
+				);
+
+				this._indicator.toggle.menu.addMenuItem(peerItem);
+			}
+		}
+	}
+
+	private async _sendFilesToPeer(peer: LocalSendPeer): Promise<void> {
+		await this._runUserAction(`Send files to ${peer.alias}`, async () => {
+			const fileDialog = new Gtk.FileDialog({
+				title: `Choose files to send to ${peer.alias}`,
+			});
+			try {
+				fileDialog.open_multiple(null, null, async (self, result) => {
+					try {
+						const files = self!.open_multiple_finish(result);
+
+						if (files) {
+							const paths: string[] = [];
+							for (let index = 0; index < files.get_n_items(); index++) {
+								const file = files.get_item(index) as Gio.File | null;
+								const path = file?.get_path();
+
+								if (path === null || path === undefined)
+									throw new Error("LocalSend can only send local files and folders.");
+
+								paths.push(path);
+							}
+
+							if (paths.length === 0) return;
+
+							await this._service?.sendFilesToPeer(peer, paths);
+						}
+					} catch (_) {
+						// user closed the dialog without selecting any file
+					}
+				});
+			} catch (error) {
+				if (error instanceof Error && error.message === "No file chooser portal available") {
+					Main.notifyError(
+						"File sharing not supported",
+						"Your system does not support the file chooser portal, which is required to send files. Please install a file chooser portal implementation or use the command-line version of LocalSend to share files.",
+					);
+				} else {
+					const message = error instanceof Error ? error.message : String(error);
+					Main.notifyError("Failed to open file chooser", message);
+				}
+			}
+		});
+	}
+
+	private async _sendClipboardTextToPeer(peer: LocalSendPeer): Promise<void> {
+		await this._runUserAction(
+			`Send clipboard text to ${peer.alias}`,
+			async () => {
+				const clipboard = St.Clipboard.get_default();
+				const text = await new Promise<string>((resolve) => {
+					clipboard.get_text(null, (_clipboard, value) => {
+						resolve(value ?? "");
+					});
+				});
+
+				await this._service?.sendClipboardTextToPeer(peer, text);
 			},
 		);
 	}
 
-	private _stopDiscoverableSession(announce: boolean): void {
-		this._discoverableUntil = 0;
-
-		if (this._discoverableTimeoutId !== null) {
-			GLib.source_remove(this._discoverableTimeoutId);
-			this._discoverableTimeoutId = null;
-		}
-
-		if (this._discoverableProcessWatchId !== null) {
-			GLib.source_remove(this._discoverableProcessWatchId);
-			this._discoverableProcessWatchId = null;
-		}
-
-		this._syncIndicator();
-
-		if (announce) Main.notify("LocalSend discoverability ended");
-	}
-
-	private _syncIndicator(): void {
-		if (this._indicator === null) return;
-
-		const active = this._isDiscoverable();
-		const subtitle = active
-			? `Discoverable for ${formatRemainingTime((this._discoverableUntil - Date.now()) / 1000)}`
-			: "Ready to receive";
-
-		this._indicator.menu.setHeader(
-			Gio.icon_new_for_string(INDICATOR_ICON),
-			"LocalSend",
-			subtitle,
-		);
-	}
-
-	private async sendFiles(): Promise<void> {
-		await this._runUserAction("Send files", async () => {
-			const fileChooser = new Gtk.FileChooserNative({
-				title: "Choose files to send with LocalSend",
-				action: Gtk.FileChooserAction.OPEN,
-				select_multiple: true,
-			});
-
-			let response: Gtk.ResponseType;
-			try {
-				response = await new Promise<Gtk.ResponseType>((resolve) => {
-					fileChooser.connect("response", (_widget, resp) => {
-						resolve(resp);
-					});
-					fileChooser.show();
-				});
-			} catch (error) {
-				fileChooser.destroy();
-				throw error;
-			}
-
-			if (response !== Gtk.ResponseType.ACCEPT) {
-				fileChooser.destroy();
-				return;
-			}
-
-			const files = fileChooser.get_files();
-			fileChooser.destroy();
-
-			const paths: string[] = [];
-
-			for (let index = 0; index < files.get_n_items(); index++) {
-				const file = files.get_item(index) as Gio.File | null;
-				const path = file?.get_path();
-
-				if (path === null || path === undefined)
-					throw new Error("LocalSend can only send local files and folders.");
-
-				paths.push(path);
-			}
-
-			if (paths.length === 0) return;
-
-			this._launchLocalSend(paths, { hidden: false, watchExit: false });
-			if (this._isDiscoverable()) this._stopDiscoverableSession(true);
-		});
-	}
-
-	private async sendClipboardText(): Promise<void> {
-		await this._runUserAction("Send clipboard text", async () => {
-			const clipboard = St.Clipboard.get_default();
-			const text = await new Promise<string>((resolve) => {
-				clipboard.get_text(null, (_clipboard, value) => {
-					resolve(value);
-				});
-			});
-
-			if (text.trim().length === 0)
-				throw new Error("The clipboard does not contain any text.");
-
-			this._launchLocalSend(["--text", text], {
-				hidden: false,
-				watchExit: false,
-			});
-			if (this._isDiscoverable()) this._stopDiscoverableSession(true);
-		});
-	}
-
-	private async promptAndSendText(): Promise<void> {
-		await this._runUserAction("Send typed text", async () => {
-			const dialog = this._ensurePromptDialog();
+	private async _promptAndSendText(peer: LocalSendPeer): Promise<void> {
+		await this._runUserAction(`Send text to ${peer.alias}`, async () => {
+			const dialog = this._ensureTextPromptDialog();
 			const text = await dialog.prompt(
-				"Send text with LocalSend",
+				`Send text to ${peer.alias}`,
 				"Type or paste the text you want to hand off to LocalSend.",
 			);
 
 			if (text === null) return;
 
-			this._launchLocalSend(["--text", text], {
-				hidden: false,
-				watchExit: false,
-			});
-			if (this._isDiscoverable()) this._stopDiscoverableSession(true);
+			await this._service?.sendTypedTextToPeer(peer, text);
 		});
 	}
 
-	private _ensurePromptDialog(): TextPromptDialog {
-		if (this._promptDialog === null)
-			this._promptDialog = new TextPromptDialog();
+	private _ensureTextPromptDialog(): InstanceType<typeof TextPromptDialog> {
+		if (this._textPromptDialog === null)
+			this._textPromptDialog = new TextPromptDialog();
 
-		return this._promptDialog;
+		return this._textPromptDialog;
 	}
 
-	private _launchLocalSend(
-		extraArgs: string[],
-		options: { hidden: boolean; watchExit: boolean },
-	): void {
-		const commandLine =
-			this._settings.get_string(KEY_LAUNCHER_COMMAND).trim() ||
-			DEFAULT_LAUNCHER_COMMAND;
-		const candidates = [commandLine, DEFAULT_LAUNCHER_COMMAND, "localsend"];
+	private _ensureIncomingDialog(): InstanceType<typeof IncomingTransferDialog> {
+		if (this._incomingDialog === null)
+			this._incomingDialog = new IncomingTransferDialog();
 
-		let lastError: Error | null = null;
-
-		for (const candidate of new Set(candidates)) {
-			try {
-				const argv = parseCommandLine(candidate);
-				if (options.hidden) argv.push("--hidden");
-				argv.push(...extraArgs);
-
-				const spawnFlags =
-					GLib.SpawnFlags.SEARCH_PATH | GLib.SpawnFlags.DO_NOT_REAP_CHILD;
-				const [success, pid] = GLib.spawn_async(
-					null,
-					argv,
-					null,
-					spawnFlags,
-					null,
-				);
-
-				if (!success || pid === null)
-					throw new Error(`Failed to launch LocalSend using "${candidate}".`);
-
-				if (options.watchExit) {
-					this._discoverableProcessWatchId = GLib.child_watch_add(
-						GLib.PRIORITY_DEFAULT,
-						pid,
-						() => {
-							GLib.spawn_close_pid(pid);
-							this._discoverableProcessWatchId = null;
-
-							if (this._isDiscoverable()) this._stopDiscoverableSession(true);
-						},
-					);
-				} else {
-					GLib.spawn_close_pid(pid);
-				}
-
-				return;
-			} catch (error) {
-				lastError = error as Error;
-			}
-		}
-
-		throw lastError ?? new Error("Unable to launch LocalSend.");
+		return this._incomingDialog;
 	}
 
 	private async _runUserAction(

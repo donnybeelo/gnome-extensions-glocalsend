@@ -1,25 +1,30 @@
 <?xml version="1.0" encoding="utf-8"?>
 <schemalist>
   <schema id="org.gnome.shell.extensions.localsend-companion" path="/org/gnome/shell/extensions/localsend-companion/">
-    <key name="padding-inner" type="i">
-      <default>8</default>
-      <summary>Inner padding</summary>
-      <description>Padding between windows</description>
+    <key name="alias" type="s">
+      <default>''</default>
+      <summary>Device name</summary>
+      <description>Name advertised to other LocalSend devices.</description>
     </key>
-    <key name="animate" type="b">
-      <default>true</default>
-      <summary>Animation</summary>
-      <description>Whether to animate window movement/resizing</description>
+    <key name="fingerprint" type="s">
+      <default>''</default>
+      <summary>Fingerprint</summary>
+      <description>Random identifier used to avoid self-discovery.</description>
     </key>
-    <key name="launcher-command" type="s">
-      <default>'localsend_app'</default>
-      <summary>Launcher command</summary>
-      <description>Command used to launch LocalSend from the quick settings tile.</description>
+    <key name="port" type="i">
+      <default>53317</default>
+      <summary>Port</summary>
+      <description>HTTP and multicast port used by the LocalSend service.</description>
     </key>
-    <key name="discoverable-duration-minutes" type="i">
-      <default>10</default>
-      <summary>Discoverable duration</summary>
-      <description>Number of minutes to keep LocalSend discoverable after activating the tile.</description>
+    <key name="download-folder" type="s">
+      <default>''</default>
+      <summary>Download folder</summary>
+      <description>Directory used to store accepted incoming files.</description>
+    </key>
+    <key name="auto-accept" type="b">
+      <default>false</default>
+      <summary>Auto accept incoming transfers</summary>
+      <description>Accept transfer requests without asking first.</description>
     </key>
   </schema>
 </schemalist>

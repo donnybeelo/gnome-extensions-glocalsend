@@ -13,10 +13,6 @@
   },
   "include": [
     "ambient.d.ts",
-  ],
-  "files": [
-    "common.ts",
-    "extension.ts",
-    "prefs.ts"
+    "*.ts"
   ],
 }
