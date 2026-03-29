@@ -846,7 +846,7 @@ export class LocalSendService {
 			} satisfies PrepareUploadRequest,
 		);
 
-		if (prepare.status === 204) {
+		if (prepare.status === 204 || prepare.status === 403) {
 			this._callbacks.onNotification(
 				"LocalSend",
 				"The receiver rejected the file transfer.",

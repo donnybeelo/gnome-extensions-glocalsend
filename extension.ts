@@ -11,7 +11,12 @@ import * as PopupMenu from "resource:///org/gnome/shell/ui/popupMenu.js";
 import * as ModalDialog from "resource:///org/gnome/shell/ui/modalDialog.js";
 import { Extension } from "resource:///org/gnome/shell/extensions/extension.js";
 
-import { formatBytes, KEY_AUTO_ACCEPT, SETTINGS_SCHEMA } from "./common.js";
+import {
+	DeviceType,
+	formatBytes,
+	KEY_AUTO_ACCEPT,
+	SETTINGS_SCHEMA,
+} from "./common.js";
 import {
 	type IncomingTransferRequest,
 	type LocalSendPeer,
@@ -20,6 +25,22 @@ import {
 
 const EXTENSION_DIR = import.meta.url.replace(/file:\/\/(.*)\/[^/]+$/, "$1");
 const INDICATOR_ICON = `file://${EXTENSION_DIR}/icon-symbolic.svg`;
+const DEFAULT_PEER_ICON = "network-workgroup-symbolic";
+
+const PEER_DEVICE_ICONS: Partial<Record<DeviceType, string>> = {
+	[DeviceType.Mobile]: "smartphone-symbolic",
+	[DeviceType.Desktop]: "computer-symbolic",
+	[DeviceType.Web]: "globe-symbolic",
+	[DeviceType.Headless]: "terminal-symbolic",
+	[DeviceType.Server]: "network-server-symbolic",
+};
+
+function getPeerIconName(peer: LocalSendPeer): string {
+	if (peer.deviceType === null || peer.deviceType === undefined)
+		return DEFAULT_PEER_ICON;
+
+	return PEER_DEVICE_ICONS[peer.deviceType] ?? DEFAULT_PEER_ICON;
+}
 
 const FileChooserXml = `
 <node>
@@ -384,8 +405,8 @@ export default class LocalSendCompanionExtension extends Extension {
 		const subheader = !enabled
 			? "Sharing paused"
 			: peers.length === 0
-				? "Listening for nearby devices"
-				: `${peers.length} nearby device${peers.length === 1 ? "" : "s"}`;
+				? `${this._settings!.get_string("alias")} - Listening for nearby devices`
+				: `${this._settings!.get_string("alias")} - ${peers.length} nearby device${peers.length === 1 ? "" : "s"}`;
 
 		this._indicator._indicator.visible = enabled;
 		this._indicator.visible = enabled;
@@ -399,21 +420,13 @@ export default class LocalSendCompanionExtension extends Extension {
 
 		this._indicator.toggle.menu.removeAll();
 
-		this._indicator.toggle.menu.addAction(
-			"Refresh nearby devices",
-			() => {
-				this._service?.refreshPeers();
-			},
-			Gio.icon_new_for_string("view-refresh-symbolic") as any,
-		);
-
 		if (enabled && peers.length > 0) {
 			for (const peer of peers) {
 				const peerItem = new PopupMenu.PopupSubMenuMenuItem(peer.alias, true);
 				const peerIcon = peerItem.icon;
 				if (peerIcon !== undefined) {
 					peerIcon.gicon = Gio.icon_new_for_string(
-						"network-workgroup-symbolic",
+						getPeerIconName(peer),
 					) as any;
 				}
 
@@ -444,6 +457,25 @@ export default class LocalSendCompanionExtension extends Extension {
 				this._indicator.toggle.menu.addMenuItem(peerItem);
 			}
 		}
+
+		this._indicator.toggle.menu.addMenuItem(
+			new PopupMenu.PopupSeparatorMenuItem(),
+		);
+
+		this._indicator.toggle.menu.addAction(
+			"Refresh nearby devices",
+			() => {
+				this._service?.refreshPeers();
+			},
+			Gio.icon_new_for_string("view-refresh-symbolic") as any,
+		);
+
+		this._indicator.toggle.menu.addAction(
+			"LocalSend Settings",
+			() => {
+				this.openPreferences();
+			},
+		);
 	}
 
 	private async _sendFilesToPeer(peer: LocalSendPeer): Promise<void> {
