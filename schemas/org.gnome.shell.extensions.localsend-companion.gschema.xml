@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<schemalist>
+  <schema id="org.gnome.shell.extensions.localsend-companion" path="/org/gnome/shell/extensions/localsend-companion/">
+    <key name="padding-inner" type="i">
+      <default>8</default>
+      <summary>Inner padding</summary>
+      <description>Padding between windows</description>
+    </key>
+    <key name="animate" type="b">
+      <default>true</default>
+      <summary>Animation</summary>
+      <description>Whether to animate window movement/resizing</description>
+    </key>
+    <key name="launcher-command" type="s">
+      <default>'localsend_app'</default>
+      <summary>Launcher command</summary>
+      <description>Command used to launch LocalSend from the quick settings tile.</description>
+    </key>
+    <key name="discoverable-duration-minutes" type="i">
+      <default>10</default>
+      <summary>Discoverable duration</summary>
+      <description>Number of minutes to keep LocalSend discoverable after activating the tile.</description>
+    </key>
+  </schema>
+</schemalist>

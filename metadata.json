@@ -1,0 +1,15 @@
+{
+    "name": "LocalSend companion",
+    "description": "A GNOME Extension frontend for LocalSend",
+    "uuid": "localsend-companion@donnybeelo.github.com",
+    "url": "https://github.com/donnybeelo/gnome-extensions-localsend-companion",
+    "settings-schema": "org.gnome.shell.extensions.localsend-companion",
+    "shell-version": [
+        "45",
+        "46",
+        "47",
+        "48",
+        "49",
+        "50"
+    ]
+}
