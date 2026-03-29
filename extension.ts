@@ -401,12 +401,13 @@ export default class LocalSendCompanionExtension extends Extension {
 
 		const enabled = this._service.enabled;
 		const peers = this._service.peers;
-		const subtitle = enabled ? "Discoverable" : null;
+		const alias = this._settings!.get_string("alias");
+		const subtitle = enabled ? alias : null;
 		const subheader = !enabled
-			? "Sharing paused"
+			? "Not active"
 			: peers.length === 0
-				? `${this._settings!.get_string("alias")} - Listening for nearby devices`
-				: `${this._settings!.get_string("alias")} - ${peers.length} nearby device${peers.length === 1 ? "" : "s"}`;
+				? `${alias} - Listening for nearby devices`
+				: `${alias} - ${peers.length} nearby device${peers.length === 1 ? "" : "s"}`;
 
 		this._indicator._indicator.visible = enabled;
 		this._indicator.visible = enabled;
@@ -470,12 +471,9 @@ export default class LocalSendCompanionExtension extends Extension {
 			Gio.icon_new_for_string("view-refresh-symbolic") as any,
 		);
 
-		this._indicator.toggle.menu.addAction(
-			"LocalSend Settings",
-			() => {
-				this.openPreferences();
-			},
-		);
+		this._indicator.toggle.menu.addAction("LocalSend Settings", () => {
+			this.openPreferences();
+		});
 	}
 
 	private async _sendFilesToPeer(peer: LocalSendPeer): Promise<void> {
@@ -533,7 +531,14 @@ export default class LocalSendCompanionExtension extends Extension {
 					handle,
 					null,
 					Gio.DBusSignalFlags.NONE,
-					(_connection, _senderName, _objectPath, _interfaceName, _signalName, parameters) => {
+					(
+						_connection,
+						_senderName,
+						_objectPath,
+						_interfaceName,
+						_signalName,
+						parameters,
+					) => {
 						try {
 							Gio.DBus.session.signal_unsubscribe(subscriptionId);
 
@@ -552,8 +557,8 @@ export default class LocalSendCompanionExtension extends Extension {
 								resolve(
 									Array.isArray(unpacked)
 										? unpacked.filter(
-											(uri): uri is string => typeof uri === "string",
-										)
+												(uri): uri is string => typeof uri === "string",
+											)
 										: [],
 								);
 								return;
@@ -562,8 +567,8 @@ export default class LocalSendCompanionExtension extends Extension {
 							resolve(
 								Array.isArray(urisValue)
 									? urisValue.filter(
-										(uri): uri is string => typeof uri === "string",
-									)
+											(uri): uri is string => typeof uri === "string",
+										)
 									: [],
 							);
 						} catch (error) {

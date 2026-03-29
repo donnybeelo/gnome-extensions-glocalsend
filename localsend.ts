@@ -256,7 +256,6 @@ export class LocalSendService {
 
 		this._enabled = true;
 		this._callbacks.onStateChanged();
-		this._callbacks.onNotification("LocalSend", "LocalSend sharing is active.");
 		this._scheduleAutoDisable();
 	}
 
@@ -289,10 +288,6 @@ export class LocalSendService {
 
 		this._incomingSession = null;
 		this._callbacks.onStateChanged();
-		this._callbacks.onNotification(
-			"LocalSend",
-			"LocalSend sharing has been paused.",
-		);
 	}
 
 	refreshPeers(): void {
