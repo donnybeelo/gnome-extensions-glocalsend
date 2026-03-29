@@ -1,7 +1,6 @@
 import Clutter from "gi://Clutter";
 import Gio from "gi://Gio";
 import GLib from "gi://GLib";
-import Gtk from "gi://Gtk";
 import St from "gi://St";
 import Shell from "gi://Shell";
 import GObject from "gi://GObject";
@@ -20,6 +19,28 @@ import {
 } from "./localsend.js";
 
 const INDICATOR_ICON = "network-transmit-receive-symbolic";
+
+const FileChooserXml = `
+<node>
+  <interface name="org.freedesktop.portal.FileChooser">
+    <method name="OpenFile">
+      <arg type="s" name="parent_window" direction="in"/>
+      <arg type="s" name="title" direction="in"/>
+      <arg type="a{sv}" name="options" direction="in"/>
+      <arg type="o" name="handle" direction="out"/>
+    </method>
+  </interface>
+  <interface name="org.freedesktop.portal.Request">
+    <signal name="Response">
+      <arg type="u" name="response"/>
+      <arg type="a{sv}" name="results"/>
+    </signal>
+  </interface>
+</node>`;
+
+const FileChooserProxy = (Gio.DBusProxy as any).makeProxyWrapper(
+	FileChooserXml,
+);
 
 const LocalSendToggle = GObject.registerClass(
 	class LocalSendToggle extends QuickSettings.QuickMenuToggle {
@@ -429,45 +450,105 @@ export default class LocalSendCompanionExtension extends Extension {
 
 	private async _sendFilesToPeer(peer: LocalSendPeer): Promise<void> {
 		await this._runUserAction(`Send files to ${peer.alias}`, async () => {
-			const fileDialog = new Gtk.FileDialog({
-				title: `Choose files to send to ${peer.alias}`,
-			});
-			try {
-				fileDialog.open_multiple(null, null, async (self, result) => {
-					try {
-						const files = self!.open_multiple_finish(result);
+			const proxy = new FileChooserProxy(
+				Gio.DBus.session,
+				"org.freedesktop.portal.Desktop",
+				"/org/freedesktop/portal/desktop",
+			) as Gio.DBusProxy;
 
-						if (files) {
-							const paths: string[] = [];
-							for (let index = 0; index < files.get_n_items(); index++) {
-								const file = files.get_item(index) as Gio.File | null;
-								const path = file?.get_path();
+			// 1. Call OpenFile
+			proxy.OpenFileRemote(
+				"",
+				"Select a File",
+				{
+					multiple: new GLib.Variant("b", true),
+					accept_label: new GLib.Variant("s", "Select"),
+				},
+				(handle: unknown, error: Error | null) => {
+					if (error) {
+						console.error(error);
+						return;
+					}
 
-								if (path === null || path === undefined)
-									throw new Error("LocalSend can only send local files and folders.");
+					if (handle === null) {
+						console.error("No portal handle returned.");
+						return;
+					}
 
-								paths.push(path);
+					// 2. Connect to the specific request handle to get the result
+					const connection = Gio.DBus.session;
+					console.log(handle);
+					const handleArray = Array.isArray(handle) ? handle : null;
+					const requestHandle = handleArray?.[0];
+					if (typeof requestHandle !== "string") {
+						console.error("Unexpected portal handle type.");
+						return;
+					}
+
+					const requestPath = requestHandle.startsWith("/")
+						? requestHandle
+						: `/${requestHandle}`;
+					const signalId = connection.signal_subscribe(
+						"org.freedesktop.portal.Desktop",
+						"org.freedesktop.portal.Request",
+						"Response",
+						requestPath,
+						null,
+						Gio.DBusSignalFlags.NONE,
+						(
+							_conn,
+							_sender,
+							_path,
+							_iface,
+							_signal,
+							parameters: GLib.Variant,
+						) => {
+							const unpacked = parameters.deepUnpack() as [
+								number,
+								{
+									uris?: Record<string, unknown>;
+									choices?: Record<string, unknown>;
+								},
+							];
+							const response = unpacked[0];
+							const results = unpacked[1];
+
+							const uris = results.uris
+								? Object.values(results.uris).filter(
+										(value): value is string => typeof value === "string",
+									)
+								: [];
+
+							// response == 0 means "Success/OK"
+							if (response === 0 && uris.length > 0) {
+								const paths: string[] = [];
+								for (const uri of uris) {
+									const file = Gio.File.new_for_uri(uri);
+									const path = file.get_path();
+
+									if (path === null || path === undefined) {
+										throw new Error(
+											"LocalSend can only send local files and folders.",
+										);
+									}
+
+									paths.push(path);
+								}
+
+								if (paths.length === 0) return;
+
+								void this._service?.sendFilesToPeer(peer, paths);
+							} else {
+								console.log(
+									`Ignoring portal response ${response}; uris=${JSON.stringify(uris)}; choices=${JSON.stringify(results.choices ?? {})}`,
+								);
 							}
 
-							if (paths.length === 0) return;
-
-							await this._service?.sendFilesToPeer(peer, paths);
-						}
-					} catch (_) {
-						// user closed the dialog without selecting any file
-					}
-				});
-			} catch (error) {
-				if (error instanceof Error && error.message === "No file chooser portal available") {
-					Main.notifyError(
-						"File sharing not supported",
-						"Your system does not support the file chooser portal, which is required to send files. Please install a file chooser portal implementation or use the command-line version of LocalSend to share files.",
+							connection.signal_unsubscribe(signalId);
+						},
 					);
-				} else {
-					const message = error instanceof Error ? error.message : String(error);
-					Main.notifyError("Failed to open file chooser", message);
-				}
-			}
+				},
+			);
 		});
 	}
 
