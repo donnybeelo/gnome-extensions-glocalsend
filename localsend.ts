@@ -182,8 +182,20 @@ export class LocalSendService {
 	}
 
 	toggleEnabled(): void {
-		if (this._enabled) this.stop();
-		else this.start();
+		if (this._enabled) {
+			this.stop();
+			return;
+		}
+
+		if (this._portIsStillBound()) {
+			throw new Error(
+				"LocalSend cannot be re-enabled until port " +
+					String(this._port) +
+					" is free.",
+			);
+		}
+
+		this.start();
 	}
 
 	private _scheduleAutoDisable(): void {
@@ -286,6 +298,10 @@ export class LocalSendService {
 			this._peerCleanupSourceId = null;
 		}
 
+		if (this._server !== null) {
+			this._server.disconnect();
+		}
+
 		this._incomingSession = null;
 		this._callbacks.onStateChanged();
 	}
@@ -362,6 +378,48 @@ export class LocalSendService {
 		if (configured.length > 0) return configured;
 
 		return getDefaultDownloadFolder();
+	}
+
+	isPortStillBound(): boolean {
+		try {
+			const socket = Gio.Socket.new(
+				Gio.SocketFamily.IPV4,
+				Gio.SocketType.STREAM,
+				Gio.SocketProtocol.TCP,
+			);
+			socket.bind(
+				new Gio.InetSocketAddress({
+					address: Gio.InetAddress.new_any(Gio.SocketFamily.IPV4),
+					port: this._port,
+				}),
+				true,
+			);
+			socket.close();
+			return false;
+		} catch {
+			return true;
+		}
+	}
+
+	private _portIsStillBound(): boolean {
+		try {
+			const socket = Gio.Socket.new(
+				Gio.SocketFamily.IPV4,
+				Gio.SocketType.STREAM,
+				Gio.SocketProtocol.TCP,
+			);
+			socket.bind(
+				new Gio.InetSocketAddress({
+					address: Gio.InetAddress.new_any(Gio.SocketFamily.IPV4),
+					port: this._port,
+				}),
+				true,
+			);
+			socket.close();
+			return false;
+		} catch {
+			return true;
+		}
 	}
 
 	private _installServerHandlers(): void {

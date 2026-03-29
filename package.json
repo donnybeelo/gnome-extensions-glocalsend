@@ -1,32 +1,32 @@
 {
-  "name": "glocalsend",
-  "version": "0.0.0",
-  "description": "A LocalSend client integrated into the GNOME Shell",
-  "type": "module",
-  "private": false,
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/donnybeelo/gnome-extensions-glocalsend.git"
-  },
-  "author": "Daniel Elia <d.elia@outlook.com>",
-  "bugs": {
-    "url": "https://github.com/donnybeelo/gnome-extensions-glocalsend/issues"
-  },
-  "homepage": "https://github.com/donnybeelo/gnome-extensions-glocalsend#readme",
-  "sideEffects": false,
-  "scripts": {
-    "build": "tsc"
-  },
-  "dependencies": {
-    "@girs/adw-1": "1.9.0-4.0.0-beta.40",
-    "@girs/clutter-17": "17.0.0-4.0.0-beta.43",
-    "@girs/gio-2.0": "2.88.0-4.0.0-beta.43",
-    "@girs/gjs": "4.0.0-beta.43",
-    "@girs/glib-2.0": "2.88.0-4.0.0-beta.43",
-    "@girs/gtk-4.0": "4.20.1-4.0.0-beta.38",
-    "@girs/gnome-shell": "49.1.0",
-    "@girs/shell-17": "17.0.0-4.0.0-beta.43",
-    "@girs/st-17": "17.0.0-4.0.0-beta.43",
-    "typescript": "^6.0.2"
-  }
+	"name": "glocalsend",
+	"version": "0.0.0",
+	"description": "A LocalSend client integrated into the GNOME Quick Settings",
+	"type": "module",
+	"private": false,
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/donnybeelo/gnome-extensions-glocalsend.git"
+	},
+	"author": "Daniel Elia <d.elia@outlook.com>",
+	"bugs": {
+		"url": "https://github.com/donnybeelo/gnome-extensions-glocalsend/issues"
+	},
+	"homepage": "https://github.com/donnybeelo/gnome-extensions-glocalsend#readme",
+	"sideEffects": false,
+	"scripts": {
+		"build": "tsc"
+	},
+	"dependencies": {
+		"@girs/adw-1": "1.9.0-4.0.0-beta.40",
+		"@girs/clutter-17": "17.0.0-4.0.0-beta.43",
+		"@girs/gio-2.0": "2.88.0-4.0.0-beta.43",
+		"@girs/gjs": "4.0.0-beta.43",
+		"@girs/glib-2.0": "2.88.0-4.0.0-beta.43",
+		"@girs/gtk-4.0": "4.20.1-4.0.0-beta.38",
+		"@girs/gnome-shell": "49.1.0",
+		"@girs/shell-17": "17.0.0-4.0.0-beta.43",
+		"@girs/st-17": "17.0.0-4.0.0-beta.43",
+		"typescript": "^6.0.2"
+	}
 }

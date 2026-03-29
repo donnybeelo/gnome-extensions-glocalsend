@@ -1,6 +1,6 @@
 {
 	"name": "GLocalSend",
-	"description": "A LocalSend client integrated into the GNOME Shell",
+	"description": "A LocalSend client integrated into the GNOME Quick Settings",
 	"uuid": "glocalsend@donnybeelo.github.com",
 	"url": "https://github.com/donnybeelo/gnome-extensions-glocalsend",
 	"settings-schema": "org.gnome.shell.extensions.glocalsend",
