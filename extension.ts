@@ -38,10 +38,6 @@ const FileChooserXml = `
   </interface>
 </node>`;
 
-const FileChooserProxy = (Gio.DBusProxy as any).makeProxyWrapper(
-	FileChooserXml,
-);
-
 const LocalSendToggle = GObject.registerClass(
 	class LocalSendToggle extends QuickSettings.QuickMenuToggle {
 		constructor() {
@@ -450,105 +446,109 @@ export default class LocalSendCompanionExtension extends Extension {
 
 	private async _sendFilesToPeer(peer: LocalSendPeer): Promise<void> {
 		await this._runUserAction(`Send files to ${peer.alias}`, async () => {
-			const proxy = new FileChooserProxy(
-				Gio.DBus.session,
-				"org.freedesktop.portal.Desktop",
-				"/org/freedesktop/portal/desktop",
-			) as Gio.DBusProxy;
+			if (this._service === null)
+				throw new Error("LocalSend service is not available.");
 
-			// 1. Call OpenFile
-			proxy.OpenFileRemote(
-				"",
-				"Select a File",
-				{
-					multiple: new GLib.Variant("b", true),
-					accept_label: new GLib.Variant("s", "Select"),
-				},
-				(handle: unknown, error: Error | null) => {
-					if (error) {
-						console.error(error);
-						return;
-					}
+			const fileChooserInterfaceInfo = Gio.DBusNodeInfo.new_for_xml(
+				FileChooserXml,
+			).lookup_interface("org.freedesktop.portal.FileChooser");
+			if (fileChooserInterfaceInfo === null) {
+				throw new Error("Unable to load FileChooser DBus interface info.");
+			}
 
-					if (handle === null) {
-						console.error("No portal handle returned.");
-						return;
-					}
+			const proxy = new Gio.DBusProxy({
+				g_connection: Gio.DBus.session,
+				g_name: "org.freedesktop.portal.Desktop",
+				g_object_path: "/org/freedesktop/portal/desktop",
+				g_interface_name: "org.freedesktop.portal.FileChooser",
+				g_interface_info: fileChooserInterfaceInfo,
+			});
 
-					// 2. Connect to the specific request handle to get the result
-					const connection = Gio.DBus.session;
-					console.log(handle);
-					const handleArray = Array.isArray(handle) ? handle : null;
-					const requestHandle = handleArray?.[0];
-					if (typeof requestHandle !== "string") {
-						console.error("Unexpected portal handle type.");
-						return;
-					}
+			const options = {
+				modal: GLib.Variant.new_boolean(false),
+				multiple: GLib.Variant.new_boolean(true),
+				accept_label: GLib.Variant.new_string("Select"),
+			};
 
-					const requestPath = requestHandle.startsWith("/")
-						? requestHandle
-						: `/${requestHandle}`;
-					const signalId = connection.signal_subscribe(
-						"org.freedesktop.portal.Desktop",
-						"org.freedesktop.portal.Request",
-						"Response",
-						requestPath,
-						null,
-						Gio.DBusSignalFlags.NONE,
-						(
-							_conn,
-							_sender,
-							_path,
-							_iface,
-							_signal,
-							parameters: GLib.Variant,
-						) => {
-							const unpacked = parameters.deepUnpack() as [
+			const handle = await new Promise<string>((resolve, reject) => {
+				proxy.call(
+					"OpenFile",
+					GLib.Variant.new("(ssa{sv})", ["", "Select Files", options]) as any,
+					Gio.DBusCallFlags.NONE,
+					-1,
+					null,
+					(p, res) => {
+						try {
+							const result = p!.call_finish(res);
+							const [requestHandle] = result.recursiveUnpack() as [string];
+							resolve(requestHandle);
+						} catch (error) {
+							reject(error);
+						}
+					},
+				);
+			});
+
+			const selectedUris = await new Promise<string[]>((resolve, reject) => {
+				let subscriptionId = 0;
+
+				subscriptionId = Gio.DBus.session.signal_subscribe(
+					"org.freedesktop.portal.Desktop",
+					"org.freedesktop.portal.Request",
+					"Response",
+					handle,
+					null,
+					Gio.DBusSignalFlags.NONE,
+					(_connection, _senderName, _objectPath, _interfaceName, _signalName, parameters) => {
+						try {
+							Gio.DBus.session.signal_unsubscribe(subscriptionId);
+
+							const [response, results] = parameters.recursiveUnpack() as [
 								number,
-								{
-									uris?: Record<string, unknown>;
-									choices?: Record<string, unknown>;
-								},
+								Record<string, unknown>,
 							];
-							const response = unpacked[0];
-							const results = unpacked[1];
-
-							const uris = results.uris
-								? Object.values(results.uris).filter(
-										(value): value is string => typeof value === "string",
-									)
-								: [];
-
-							// response == 0 means "Success/OK"
-							if (response === 0 && uris.length > 0) {
-								const paths: string[] = [];
-								for (const uri of uris) {
-									const file = Gio.File.new_for_uri(uri);
-									const path = file.get_path();
-
-									if (path === null || path === undefined) {
-										throw new Error(
-											"LocalSend can only send local files and folders.",
-										);
-									}
-
-									paths.push(path);
-								}
-
-								if (paths.length === 0) return;
-
-								void this._service?.sendFilesToPeer(peer, paths);
-							} else {
-								console.log(
-									`Ignoring portal response ${response}; uris=${JSON.stringify(uris)}; choices=${JSON.stringify(results.choices ?? {})}`,
-								);
+							if (response !== 0) {
+								resolve([]);
+								return;
 							}
 
-							connection.signal_unsubscribe(signalId);
-						},
-					);
-				},
-			);
+							const urisValue = results.uris;
+							if (urisValue instanceof GLib.Variant) {
+								const unpacked = urisValue.recursiveUnpack();
+								resolve(
+									Array.isArray(unpacked)
+										? unpacked.filter(
+											(uri): uri is string => typeof uri === "string",
+										)
+										: [],
+								);
+								return;
+							}
+
+							resolve(
+								Array.isArray(urisValue)
+									? urisValue.filter(
+										(uri): uri is string => typeof uri === "string",
+									)
+									: [],
+							);
+						} catch (error) {
+							reject(error);
+						}
+					},
+				);
+			});
+
+			if (selectedUris.length === 0) return;
+
+			const filePaths = selectedUris
+				.map((uri) => Gio.File.new_for_uri(uri).get_path())
+				.filter((path): path is string => path !== null && path.length > 0);
+
+			if (filePaths.length === 0)
+				throw new Error("Only local files can be sent.");
+
+			await this._service.sendFilesToPeer(peer, filePaths);
 		});
 	}
 
