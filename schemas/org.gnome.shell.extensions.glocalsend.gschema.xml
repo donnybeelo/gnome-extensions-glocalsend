@@ -26,5 +26,15 @@
       <summary>Auto accept incoming transfers</summary>
       <description>Accept transfer requests without asking first.</description>
     </key>
+    <key name="auto-disable-enabled" type="b">
+      <default>true</default>
+      <summary>Auto disable LocalSend</summary>
+      <description>Automatically turn LocalSend off after it has been enabled for a while.</description>
+    </key>
+    <key name="auto-disable-minutes" type="i">
+      <default>10</default>
+      <summary>Auto disable timeout</summary>
+      <description>Number of minutes before LocalSend is turned off automatically.</description>
+    </key>
   </schema>
 </schemalist>

@@ -365,7 +365,7 @@ export default class LocalSendCompanionExtension extends Extension {
 		);
 
 		// Keep LocalSend disabled on startup until the user explicitly enables it.
-		// The first toggle-on will auto-disable after 10 minutes.
+		// Auto-disable timing is configurable in preferences.
 		this._service?.stop();
 		this._syncIndicator();
 	}

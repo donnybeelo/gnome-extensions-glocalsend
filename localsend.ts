@@ -6,6 +6,8 @@ import {
 	DEFAULT_MULTICAST_GROUP,
 	DEFAULT_PORT,
 	DeviceType,
+	KEY_AUTO_DISABLE_ENABLED,
+	KEY_AUTO_DISABLE_MINUTES,
 	PROTOCOL_VERSION,
 	ProtocolType,
 	decodeJson,
@@ -200,6 +202,13 @@ export class LocalSendService {
 	}
 
 	private _scheduleAutoDisable(): void {
+		if (!this._settings.get_boolean(KEY_AUTO_DISABLE_ENABLED)) return;
+
+		const timeoutMinutes = Math.max(
+			1,
+			this._settings.get_int(KEY_AUTO_DISABLE_MINUTES) || 10,
+		);
+
 		if (this._autoDisableSourceId !== null) {
 			GLib.source_remove(this._autoDisableSourceId);
 			this._autoDisableSourceId = null;
@@ -207,10 +216,14 @@ export class LocalSendService {
 
 		this._autoDisableSourceId = GLib.timeout_add_seconds(
 			GLib.PRIORITY_DEFAULT,
-			600,
+			timeoutMinutes * 60,
 			() => {
 				this._autoDisableSourceId = null;
 				this.stop();
+				this._callbacks.onNotification(
+					"LocalSend disabled",
+					`LocalSend was turned off automatically after ${timeoutMinutes} minute${timeoutMinutes === 1 ? "" : "s"}.`,
+				);
 				return GLib.SOURCE_REMOVE;
 			},
 		);
