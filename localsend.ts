@@ -87,6 +87,7 @@ const HTTP_STATUS_PHRASES: Record<number, string> = {
 	412: "Precondition Failed",
 	500: "Internal Server Error",
 };
+const REJECT_MESSAGE = "The recipient has rejected the request.";
 
 function parseRequestUrl(message: any): {
 	path: string;
@@ -724,7 +725,7 @@ export class LocalSendService {
 
 			if (!accepted) {
 				this._respondJson(message, 403, {
-					message: "File request declined by recipient",
+					message: REJECT_MESSAGE,
 				});
 				return;
 			}
@@ -900,22 +901,18 @@ export class LocalSendService {
 		);
 
 		if (prepare.status === 204 || prepare.status === 403) {
-			this._callbacks.onNotification(
-				"LocalSend",
-				"The receiver rejected the file transfer.",
-			);
+			this._callbacks.onNotification("LocalSend", REJECT_MESSAGE);
 			return;
 		}
 
 		if (prepare.status !== 200)
 			throw new Error(
-				`LocalSend rejected the transfer with HTTP ${prepare.status}.`,
+				`An error occurred: ${prepare.status} ${HTTP_STATUS_PHRASES[prepare.status]}.`,
 			);
 
 		const response = decodeJson<PrepareUploadResponse>(prepare.body);
 		const acceptedIds = Object.keys(response.files);
-		if (acceptedIds.length === 0)
-			throw new Error("The receiver did not accept any files.");
+		if (acceptedIds.length === 0) throw new Error(REJECT_MESSAGE);
 
 		await Promise.all(
 			acceptedIds.map(async (fileId) => {
