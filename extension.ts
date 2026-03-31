@@ -465,13 +465,15 @@ export default class LocalSendCompanionExtension extends Extension {
 			new PopupMenu.PopupSeparatorMenuItem(),
 		);
 
-		this._indicator.toggle.menu.addAction(
-			"Refresh nearby devices",
-			() => {
-				this._service?.refreshPeers();
-			},
-			Gio.icon_new_for_string("view-refresh-symbolic") as any,
-		);
+		if (enabled) {
+			this._indicator.toggle.menu.addAction(
+				"Refresh nearby devices",
+				() => {
+					this._service?.refreshPeers();
+				},
+				Gio.icon_new_for_string("view-refresh-symbolic") as any,
+			);
+		}
 
 		this._indicator.toggle.menu.addAction("LocalSend Settings", () => {
 			this.openPreferences();
