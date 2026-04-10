@@ -20,7 +20,6 @@ $(NAME).zip: dist/extension.js dist/prefs.js schemas/gschemas.compiled
 	@if [ -d locale ]; then cp -r locale dist/; fi
 	@cp metadata.json icon-symbolic.svg dist/
 	@(cd dist && zip ../$(NAME).zip -9r .)
-	@cp schemas/gschemas.compiled dist/schemas
 
 pack: $(NAME).zip
 
@@ -28,6 +27,7 @@ install: $(NAME).zip
 	@touch ~/.local/share/gnome-shell/extensions/$(NAME)@$(DOMAIN)
 	@rm -rf ~/.local/share/gnome-shell/extensions/$(NAME)@$(DOMAIN)
 	@mv dist ~/.local/share/gnome-shell/extensions/$(NAME)@$(DOMAIN)
+	@cp schemas/gschemas.compiled ~/.local/share/gnome-shell/extensions/$(NAME)@$(DOMAIN)/schemas/
 
 clean:
 	@rm -rf dist node_modules $(NAME).zip
