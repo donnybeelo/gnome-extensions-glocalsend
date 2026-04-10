@@ -15,10 +15,12 @@ schemas/gschemas.compiled: schemas/org.gnome.shell.extensions.$(NAME).gschema.xm
 	glib-compile-schemas schemas
 
 $(NAME).zip: dist/extension.js dist/prefs.js schemas/gschemas.compiled
-	@cp -r schemas dist/
+	@mkdir -p dist/schemas
+	@cp schemas/org.gnome.shell.extensions.$(NAME).gschema.xml dist/schemas
 	@if [ -d locale ]; then cp -r locale dist/; fi
 	@cp metadata.json icon-symbolic.svg dist/
 	@(cd dist && zip ../$(NAME).zip -9r .)
+	@cp schemas/gschemas.compiled dist/schemas
 
 pack: $(NAME).zip
 

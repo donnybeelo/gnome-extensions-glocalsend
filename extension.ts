@@ -88,7 +88,7 @@ const LocalSendIndicator = GObject.registerClass(
 			this.toggle = new LocalSendToggle();
 			this.quickSettingsItems.push(this.toggle);
 		}
-		destroy() {
+		override destroy() {
 			this.quickSettingsItems?.forEach((i) => {
 				i.destroy();
 			});
@@ -106,6 +106,7 @@ const TextPromptDialog = GObject.registerClass(
 		private _entry: St.Entry;
 		private _resolve: ((value: string | null) => void) | null = null;
 		private _activateSignalId: number | null = null;
+		private _content: St.BoxLayout | null = null;
 
 		constructor() {
 			super({
@@ -116,7 +117,7 @@ const TextPromptDialog = GObject.registerClass(
 				destroyOnClose: false,
 			});
 
-			const content = new St.BoxLayout({
+			this._content = new St.BoxLayout({
 				vertical: true,
 				x_expand: true,
 				y_expand: true,
@@ -146,11 +147,11 @@ const TextPromptDialog = GObject.registerClass(
 				y_align: Clutter.ActorAlign.START,
 			});
 
-			content.add_child(this._titleLabel);
-			content.add_child(this._descriptionLabel);
-			content.add_child(this._entry);
-			content.add_child(this._errorLabel);
-			this.contentLayout.add_child(content);
+			this._content.add_child(this._titleLabel);
+			this._content.add_child(this._descriptionLabel);
+			this._content.add_child(this._entry);
+			this._content.add_child(this._errorLabel);
+			this.contentLayout.add_child(this._content);
 			this.setInitialKeyFocus(this._entry);
 
 			this._activateSignalId = this._entry.clutter_text.connect(
@@ -204,6 +205,12 @@ const TextPromptDialog = GObject.registerClass(
 			}
 
 			this._resolvePrompt(null);
+			this._titleLabel.destroy();
+			this._descriptionLabel.destroy();
+			this._errorLabel.destroy();
+			this._entry.destroy();
+			this._content?.destroy();
+			this._content = null;
 			super.destroy();
 		}
 
@@ -233,6 +240,7 @@ const IncomingTransferDialog = GObject.registerClass(
 	class IncomingTransferDialog extends ModalDialog.ModalDialog {
 		private _summaryLabel: St.Label;
 		private _filesLabel: St.Label;
+		private _content: St.BoxLayout | null = null;
 		private _resolve: ((value: boolean) => void) | null = null;
 
 		constructor() {
@@ -244,7 +252,7 @@ const IncomingTransferDialog = GObject.registerClass(
 				destroyOnClose: false,
 			});
 
-			const content = new St.BoxLayout({
+			this._content = new St.BoxLayout({
 				vertical: true,
 				x_expand: true,
 				y_expand: true,
@@ -263,9 +271,9 @@ const IncomingTransferDialog = GObject.registerClass(
 				y_align: Clutter.ActorAlign.START,
 			});
 
-			content.add_child(this._summaryLabel);
-			content.add_child(this._filesLabel);
-			this.contentLayout.add_child(content);
+			this._content.add_child(this._summaryLabel);
+			this._content.add_child(this._filesLabel);
+			this.contentLayout.add_child(this._content);
 
 			this.setButtons([
 				{
@@ -303,6 +311,10 @@ const IncomingTransferDialog = GObject.registerClass(
 
 		override destroy(): void {
 			this._resolvePrompt(false);
+			this._summaryLabel.destroy();
+			this._filesLabel.destroy();
+			this._content?.destroy();
+			this._content = null;
 			super.destroy();
 		}
 
