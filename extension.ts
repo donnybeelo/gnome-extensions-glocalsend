@@ -240,8 +240,8 @@ const TextPromptDialog = GObject.registerClass(
 
 const IncomingTransferDialog = GObject.registerClass(
 	class IncomingTransferDialog extends ModalDialog.ModalDialog {
-		private _summaryLabel: St.Label;
-		private _filesLabel: St.Label;
+		private _summaryLabel: St.Label | null = null;
+		private _filesLabel: St.Label | null = null;
 		private _content: St.BoxLayout | null = null;
 		private _resolve: ((value: boolean) => void) | null = null;
 
@@ -300,8 +300,8 @@ const IncomingTransferDialog = GObject.registerClass(
 		): Promise<boolean> {
 			if (this._resolve !== null) this._resolvePrompt(false);
 
-			this._summaryLabel.text = `${sender.alias} wants to send ${request.files.length} file${request.files.length === 1 ? "" : "s"}.`;
-			this._filesLabel.text = request.files
+			this._summaryLabel!.text = `${sender.alias} wants to send ${request.files.length} file${request.files.length === 1 ? "" : "s"}.`;
+			this._filesLabel!.text = request.files
 				.map((file) => `${file.fileName} (${formatBytes(file.size)})`)
 				.join("\n");
 
@@ -313,8 +313,10 @@ const IncomingTransferDialog = GObject.registerClass(
 
 		override destroy(): void {
 			this._resolvePrompt(false);
-			this._summaryLabel.destroy();
-			this._filesLabel.destroy();
+			this._summaryLabel!.destroy();
+			this._summaryLabel = null;
+			this._filesLabel!.destroy();
+			this._filesLabel = null;
 			this._content?.destroy();
 			this._content = null;
 			super.destroy();
