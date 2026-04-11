@@ -1090,11 +1090,6 @@ export class LocalSendService {
 				error.code !== Gio.IOErrorEnum.ADDRESS_IN_USE
 			)
 				throw error;
-
-			if (DEBUG_LOGGING)
-				console.warn(
-					`LocalSend port ${preferredPort} is already in use; falling back to an ephemeral port.`,
-				);
 			const fallbackPort = tryListen(0);
 			this._callbacks.onNotification(
 				"LocalSend",

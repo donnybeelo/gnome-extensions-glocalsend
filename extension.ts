@@ -213,6 +213,8 @@ const TextPromptDialog = GObject.registerClass(
 			this._errorLabel = null;
 			this._entry!.destroy();
 			this._entry = null;
+			this._content!.destroy();
+			this._content = null;
 			super.destroy();
 		}
 
