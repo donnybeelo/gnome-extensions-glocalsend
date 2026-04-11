@@ -68,6 +68,8 @@ function now(): number {
 	return Date.now();
 }
 
+const DEBUG_LOGGING = false;
+
 function toBytes(value: Uint8Array | string): Uint8Array {
 	return typeof value === "string" ? new TextEncoder().encode(value) : value;
 }
@@ -456,7 +458,8 @@ export class LocalSendService {
 				void this._handlePrepareUpload(message).catch((error) => {
 					const messageText =
 						error instanceof Error ? error.message : String(error);
-					console.warn(`LocalSend prepare-upload failed: ${messageText}`);
+					if (DEBUG_LOGGING)
+						console.warn(`LocalSend prepare-upload failed: ${messageText}`);
 				});
 				return;
 			}
@@ -526,7 +529,8 @@ export class LocalSendService {
 			socket.set_option(SOCKET_LEVEL_SOL, SOCKET_OPTION_REUSEPORT, 1);
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
-			console.warn(`LocalSend could not enable UDP port sharing: ${message}`);
+			if (DEBUG_LOGGING)
+				console.warn(`LocalSend could not enable UDP port sharing: ${message}`);
 		}
 
 		const address = Gio.InetSocketAddress.new(
@@ -584,7 +588,8 @@ export class LocalSendService {
 			this._handleDiscoveryPacket(ip, payload);
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
-			console.warn(`LocalSend discovery packet failed: ${message}`);
+			if (DEBUG_LOGGING)
+				console.warn(`LocalSend discovery packet failed: ${message}`);
 		}
 	}
 
@@ -634,9 +639,10 @@ export class LocalSendService {
 			);
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
-			console.warn(
-				`LocalSend register response failed for ${peer.alias}: ${message}`,
-			);
+			if (DEBUG_LOGGING)
+				console.warn(
+					`LocalSend register response failed for ${peer.alias}: ${message}`,
+				);
 			this._sendUdpResponse();
 		}
 	}
@@ -663,7 +669,8 @@ export class LocalSendService {
 			);
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
-			console.warn(`LocalSend multicast response failed: ${message}`);
+			if (DEBUG_LOGGING)
+				console.warn(`LocalSend multicast response failed: ${message}`);
 		}
 	}
 
@@ -1084,9 +1091,10 @@ export class LocalSendService {
 			)
 				throw error;
 
-			console.warn(
-				`LocalSend port ${preferredPort} is already in use; falling back to an ephemeral port.`,
-			);
+			if (DEBUG_LOGGING)
+				console.warn(
+					`LocalSend port ${preferredPort} is already in use; falling back to an ephemeral port.`,
+				);
 			const fallbackPort = tryListen(0);
 			this._callbacks.onNotification(
 				"LocalSend",

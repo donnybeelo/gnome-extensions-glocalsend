@@ -100,10 +100,10 @@ const LocalSendIndicator = GObject.registerClass(
 
 const TextPromptDialog = GObject.registerClass(
 	class TextPromptDialog extends ModalDialog.ModalDialog {
-		private _titleLabel: St.Label;
-		private _descriptionLabel: St.Label;
-		private _errorLabel: St.Label;
-		private _entry: St.Entry;
+		private _titleLabel: St.Label | null = null;
+		private _descriptionLabel: St.Label | null = null;
+		private _errorLabel: St.Label | null = null;
+		private _entry: St.Entry | null = null;
 		private _resolve: ((value: string | null) => void) | null = null;
 		private _activateSignalId: number | null = null;
 		private _content: St.BoxLayout | null = null;
@@ -185,40 +185,42 @@ const TextPromptDialog = GObject.registerClass(
 		): Promise<string | null> {
 			if (this._resolve !== null) this._resolvePrompt(null);
 
-			this._titleLabel.text = title;
-			this._descriptionLabel.text = description;
-			this._errorLabel.text = "";
-			this._entry.text = initialText;
+			this._titleLabel!.text = title;
+			this._descriptionLabel!.text = description;
+			this._errorLabel!.text = "";
+			this._entry!.text = initialText;
 
 			return new Promise<string | null>((resolve) => {
 				this._resolve = resolve;
 				this.open();
-				this.setInitialKeyFocus(this._entry);
-				this._entry.grab_key_focus();
+				this.setInitialKeyFocus(this._entry!);
+				this._entry!.grab_key_focus();
 			});
 		}
 
 		override destroy(): void {
 			if (this._activateSignalId !== null) {
-				this._entry.clutter_text.disconnect(this._activateSignalId);
+				this._entry!.clutter_text.disconnect(this._activateSignalId);
 				this._activateSignalId = null;
 			}
 
 			this._resolvePrompt(null);
-			this._titleLabel.destroy();
-			this._descriptionLabel.destroy();
-			this._errorLabel.destroy();
-			this._entry.destroy();
-			this._content?.destroy();
-			this._content = null;
+			this._titleLabel!.destroy();
+			this._titleLabel = null;
+			this._descriptionLabel!.destroy();
+			this._descriptionLabel = null;
+			this._errorLabel!.destroy();
+			this._errorLabel = null;
+			this._entry!.destroy();
+			this._entry = null;
 			super.destroy();
 		}
 
 		private _submit(): void {
-			const text = this._entry.text;
+			const text = this._entry!.text;
 			if (text.trim().length === 0) {
-				this._errorLabel.text = "Enter text before sending.";
-				this._entry.grab_key_focus();
+				this._errorLabel!.text = "Enter text before sending.";
+				this._entry!.grab_key_focus();
 				return;
 			}
 
@@ -401,10 +403,10 @@ export default class LocalSendCompanionExtension extends Extension {
 			(Main.panel.statusArea.quickSettings as any)._removeItems?.([
 				this._indicator.toggle,
 			]);
+			this._indicator.destroy();
+			this._indicator = null;
 		}
 
-		this._indicator?.destroy();
-		this._indicator = null;
 		this._settings = null;
 	}
 
