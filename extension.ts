@@ -23,6 +23,8 @@ import {
 	LocalSendService,
 } from "./localsend.js";
 
+Gio._promisify(Gio.DBusProxy.prototype, "call", "call_finish");
+
 const EXTENSION_DIR = import.meta.url.replace(/file:\/\/(.*)\/[^/]+$/, "$1");
 const INDICATOR_ICON = `file://${EXTENSION_DIR}/icon-symbolic.svg`;
 const DEFAULT_PEER_ICON = "network-workgroup-symbolic";
@@ -61,6 +63,7 @@ const FileChooserXml = `
 </node>`;
 
 const LocalSendToggle = GObject.registerClass(
+	{ GTypeName: "GLocalSend_LocalSendToggle" },
 	class LocalSendToggle extends QuickSettings.QuickMenuToggle {
 		constructor() {
 			super({
@@ -74,6 +77,7 @@ const LocalSendToggle = GObject.registerClass(
 );
 
 const LocalSendIndicator = GObject.registerClass(
+	{ GTypeName: "GLocalSend_LocalSendIndicator" },
 	class LocalSendIndicator extends QuickSettings.SystemIndicator {
 		_indicator: St.Icon;
 		toggle: InstanceType<typeof LocalSendToggle>;
@@ -93,12 +97,14 @@ const LocalSendIndicator = GObject.registerClass(
 				i.destroy();
 			});
 			this._indicator.destroy();
+			this._indicator = null as any;
 			super.destroy();
 		}
 	},
 );
 
 const TextPromptDialog = GObject.registerClass(
+	{ GTypeName: "GLocalSend_TextPromptDialog" },
 	class TextPromptDialog extends ModalDialog.ModalDialog {
 		private _titleLabel: St.Label | null = null;
 		private _descriptionLabel: St.Label | null = null;
@@ -119,6 +125,7 @@ const TextPromptDialog = GObject.registerClass(
 
 			this._content = new St.BoxLayout({
 				vertical: true,
+				orientation: Clutter.Orientation.VERTICAL,
 				x_expand: true,
 				y_expand: true,
 				style_class: "prompt-dialog-content",
@@ -241,6 +248,7 @@ const TextPromptDialog = GObject.registerClass(
 );
 
 const IncomingTransferDialog = GObject.registerClass(
+	{ GTypeName: "GLocalSend_IncomingTransferDialog" },
 	class IncomingTransferDialog extends ModalDialog.ModalDialog {
 		private _summaryLabel: St.Label | null = null;
 		private _filesLabel: St.Label | null = null;
@@ -258,6 +266,7 @@ const IncomingTransferDialog = GObject.registerClass(
 
 			this._content = new St.BoxLayout({
 				vertical: true,
+				orientation: Clutter.Orientation.VERTICAL,
 				x_expand: true,
 				y_expand: true,
 				style_class: "prompt-dialog-content",
@@ -337,6 +346,7 @@ const IncomingTransferDialog = GObject.registerClass(
 
 export default class LocalSendCompanionExtension extends Extension {
 	private _settings!: Gio.Settings | null;
+	private _destroyed = false;
 	private _indicator: InstanceType<typeof LocalSendIndicator> | null = null;
 	private _indicatorClickedSignalId: number | null = null;
 	private _service: LocalSendService | null = null;
@@ -378,6 +388,7 @@ export default class LocalSendCompanionExtension extends Extension {
 			},
 		);
 
+		// statusArea.quickSettings: private API, required for Quick Settings integration; stable GNOME 43–50
 		Main.panel.statusArea.quickSettings.addExternalIndicator(
 			this._indicator as any,
 		);
@@ -389,6 +400,7 @@ export default class LocalSendCompanionExtension extends Extension {
 	}
 
 	disable(): void {
+		this._destroyed = true;
 		this._service?.stop();
 		this._service = null;
 
@@ -404,6 +416,7 @@ export default class LocalSendCompanionExtension extends Extension {
 		}
 
 		if (this._indicator !== null) {
+			// _removeItems: private API, required to fully deregister the indicator; stable GNOME 43–50
 			(Main.panel.statusArea.quickSettings as any)._removeItems?.([
 				this._indicator.toggle,
 			]);
@@ -524,24 +537,14 @@ export default class LocalSendCompanionExtension extends Extension {
 				accept_label: GLib.Variant.new_string("Select"),
 			};
 
-			const handle = await new Promise<string>((resolve, reject) => {
-				proxy.call(
-					"OpenFile",
-					GLib.Variant.new("(ssa{sv})", ["", "Select Files", options]) as any,
-					Gio.DBusCallFlags.NONE,
-					-1,
-					null,
-					(p, res) => {
-						try {
-							const result = p!.call_finish(res);
-							const [requestHandle] = result.recursiveUnpack() as [string];
-							resolve(requestHandle);
-						} catch (error) {
-							reject(error);
-						}
-					},
-				);
-			});
+			const callResult = await (proxy as any).call(
+				"OpenFile",
+				GLib.Variant.new("(ssa{sv})", ["", "Select Files", options]) as any,
+				Gio.DBusCallFlags.NONE,
+				-1,
+				null,
+			);
+			const [handle] = (callResult as GLib.Variant).recursiveUnpack() as [string];
 
 			const selectedUris = await new Promise<string[]>((resolve, reject) => {
 				let subscriptionId = 0;
@@ -618,6 +621,7 @@ export default class LocalSendCompanionExtension extends Extension {
 			`Send clipboard text to ${peer.alias}`,
 			async () => {
 				const clipboard = St.Clipboard.get_default();
+				// clipboard is read only here, on explicit user menu action — never automatic
 				const text = await new Promise<string>((resolve) => {
 					clipboard.get_text(null, (_clipboard, value) => {
 						resolve(value ?? "");
@@ -664,7 +668,8 @@ export default class LocalSendCompanionExtension extends Extension {
 		try {
 			await action();
 		} catch (error) {
-			const message = error instanceof Error ? error.message : String(error);
+			if (this._destroyed) return;
+			const message = (error as Error).message ?? String(error);
 			Main.notifyError(title, message);
 		}
 	}

@@ -2,6 +2,8 @@ import Gio from "gi://Gio";
 import GLib from "gi://GLib";
 import Soup from "gi://Soup";
 
+Gio._promisify(Soup.Session.prototype, "send_and_read_async", "send_and_read_finish");
+
 import {
 	DEFAULT_MULTICAST_GROUP,
 	DEFAULT_PORT,
@@ -129,6 +131,7 @@ export class LocalSendService {
 	private _announcementSourceId: number | null = null;
 	private _peerCleanupSourceId: number | null = null;
 	private _incomingSession: IncomingSession | null = null;
+	private _cancellable: Gio.Cancellable | null = null;
 
 	constructor(settings: Gio.Settings, callbacks: LocalSendServiceCallbacks) {
 		this._settings = settings;
@@ -200,7 +203,7 @@ export class LocalSendService {
 		);
 
 		if (this._autoDisableSourceId !== null) {
-			GLib.source_remove(this._autoDisableSourceId);
+			GLib.Source.remove(this._autoDisableSourceId);
 			this._autoDisableSourceId = null;
 		}
 
@@ -222,7 +225,7 @@ export class LocalSendService {
 	private _cancelAutoDisable(): void {
 		if (this._autoDisableSourceId === null) return;
 
-		GLib.source_remove(this._autoDisableSourceId);
+		GLib.Source.remove(this._autoDisableSourceId);
 		this._autoDisableSourceId = null;
 	}
 
@@ -243,6 +246,7 @@ export class LocalSendService {
 		this._settings.set_int("port", this._port);
 		this._settings.set_string("download-folder", this._downloadFolder);
 
+		this._cancellable = new Gio.Cancellable();
 		this._httpPort = this._listenOnHttpPort(this._port);
 
 		this._startDiscoverySocket();
@@ -281,9 +285,12 @@ export class LocalSendService {
 		if (!this._enabled) return;
 
 		this._enabled = false;
+		this._session.abort();
+		this._cancellable?.cancel();
+		this._cancellable = null;
 
 		if (this._multicastSourceId !== null) {
-			GLib.source_remove(this._multicastSourceId);
+			GLib.Source.remove(this._multicastSourceId);
 			this._multicastSourceId = null;
 		}
 
@@ -293,12 +300,12 @@ export class LocalSendService {
 		}
 
 		if (this._announcementSourceId !== null) {
-			GLib.source_remove(this._announcementSourceId);
+			GLib.Source.remove(this._announcementSourceId);
 			this._announcementSourceId = null;
 		}
 
 		if (this._peerCleanupSourceId !== null) {
-			GLib.source_remove(this._peerCleanupSourceId);
+			GLib.Source.remove(this._peerCleanupSourceId);
 			this._peerCleanupSourceId = null;
 		}
 
@@ -331,7 +338,7 @@ export class LocalSendService {
 					Gio.FileQueryInfoFlags.NONE,
 					null,
 				);
-				const [bytes] = await file.load_bytes_async(null);
+				const [bytes] = await file.load_bytes_async(this._cancellable);
 
 				return {
 					fileName: sanitizeFileName(info.get_display_name()),
@@ -424,7 +431,7 @@ export class LocalSendService {
 				message.pause();
 				void this._handlePrepareUpload(message).catch((error) => {
 					const messageText =
-						error instanceof Error ? error.message : String(error);
+						(error as Error).message ?? String(error);
 					if (DEBUG_LOGGING)
 						console.warn(`LocalSend prepare-upload failed: ${messageText}`);
 				});
@@ -495,7 +502,7 @@ export class LocalSendService {
 		try {
 			socket.set_option(SOCKET_LEVEL_SOL, SOCKET_OPTION_REUSEPORT, 1);
 		} catch (error) {
-			const message = error instanceof Error ? error.message : String(error);
+			const message = (error as Error).message ?? String(error);
 			if (DEBUG_LOGGING)
 				console.warn(`LocalSend could not enable UDP port sharing: ${message}`);
 		}
@@ -554,7 +561,7 @@ export class LocalSendService {
 			);
 			this._handleDiscoveryPacket(ip, payload);
 		} catch (error) {
-			const message = error instanceof Error ? error.message : String(error);
+			const message = (error as Error).message ?? String(error);
 			if (DEBUG_LOGGING)
 				console.warn(`LocalSend discovery packet failed: ${message}`);
 		}
@@ -605,7 +612,7 @@ export class LocalSendService {
 				this._buildRegisterPayload(),
 			);
 		} catch (error) {
-			const message = error instanceof Error ? error.message : String(error);
+			const message = (error as Error).message ?? String(error);
 			if (DEBUG_LOGGING)
 				console.warn(
 					`LocalSend register response failed for ${peer.alias}: ${message}`,
@@ -635,7 +642,7 @@ export class LocalSendService {
 				null,
 			);
 		} catch (error) {
-			const message = error instanceof Error ? error.message : String(error);
+			const message = (error as Error).message ?? String(error);
 			if (DEBUG_LOGGING)
 				console.warn(`LocalSend multicast response failed: ${message}`);
 		}
@@ -659,7 +666,7 @@ export class LocalSendService {
 			this._respondJson(message, 200, this._buildInfoPayload());
 		} catch (error) {
 			const messageText =
-				error instanceof Error ? error.message : String(error);
+				(error as Error).message ?? String(error);
 			this._respondJson(message, 400, { message: messageText });
 		}
 	}
@@ -745,7 +752,7 @@ export class LocalSendService {
 			} satisfies PrepareUploadResponse);
 		} catch (error) {
 			const messageText =
-				error instanceof Error ? error.message : String(error);
+				(error as Error).message ?? String(error);
 			this._respondJson(message, 400, { message: messageText });
 		} finally {
 			message.unpause();
@@ -817,7 +824,7 @@ export class LocalSendService {
 			}
 		} catch (error) {
 			const messageText =
-				error instanceof Error ? error.message : String(error);
+				(error as Error).message ?? String(error);
 			this._respondJson(message, 500, { message: messageText });
 		}
 	}
@@ -969,35 +976,15 @@ export class LocalSendService {
 	private async _sendAndRead(
 		message: any,
 	): Promise<{ status: number; body: Uint8Array }> {
-		return await new Promise((resolve, reject) => {
-			try {
-				const maybePromise = this._session.send_and_read_async(
-					message,
-					0,
-					null,
-					(_session: unknown, result: Gio.AsyncResult) => {
-						try {
-							const bytes = this._session.send_and_read_finish(result);
-							resolve({
-								status: message.get_status(),
-								body: bytes.get_data() ?? new Uint8Array(),
-							});
-						} catch (error) {
-							reject(error);
-						}
-					},
-				);
-
-				if (
-					maybePromise !== undefined &&
-					typeof maybePromise === "object" &&
-					"catch" in maybePromise
-				)
-					void (maybePromise as Promise<unknown>).catch(reject);
-			} catch (error) {
-				reject(error);
-			}
-		});
+		const bytes = await (this._session as any).send_and_read_async(
+			message,
+			0,
+			this._cancellable,
+		);
+		return {
+			status: message.get_status(),
+			body: bytes.get_data() ?? new Uint8Array(),
+		};
 	}
 
 	private _makeUniquePath(folder: string, fileName: string): string {

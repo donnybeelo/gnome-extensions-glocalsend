@@ -32,7 +32,7 @@ make install
 
 This will build the extension, create the archive, and place the unpacked extension into:
 
-`~/.local/share/gnome-shell/extensions/glocalsend@donnybeelo.github.com`
+`~/.local/share/gnome-shell/extensions/glocalsend@donnybeelo.net`
 
 ## Usage
 
