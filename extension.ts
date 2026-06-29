@@ -247,6 +247,58 @@ const TextPromptDialog = GObject.registerClass(
 	},
 );
 
+const ReceivedTextDialog = GObject.registerClass(
+	{ GTypeName: "GLocalSend_ReceivedTextDialog" },
+	class ReceivedTextDialog extends ModalDialog.ModalDialog {
+		private _senderLabel: St.Label | null = null;
+		private _textLabel: St.Label | null = null;
+
+		constructor() {
+			super({
+				shellReactive: true,
+				actionMode: Shell.ActionMode.ALL,
+				shouldFadeIn: true,
+				shouldFadeOut: true,
+				destroyOnClose: true,
+			});
+
+			this._senderLabel = new St.Label({
+				style_class: "prompt-dialog-title",
+				x_align: Clutter.ActorAlign.START,
+			});
+			this._textLabel = new St.Label({
+				style_class: "prompt-dialog-description",
+				x_align: Clutter.ActorAlign.START,
+			});
+			this._textLabel.clutter_text.line_wrap = true;
+			this._textLabel.clutter_text.selectable = true;
+
+			this.contentLayout.add_child(this._senderLabel);
+			this.contentLayout.add_child(this._textLabel);
+		}
+
+		present(senderAlias: string, text: string): void {
+			const isUrl = /^https?:\/\//i.test(text.trim());
+			this._senderLabel!.text = `${senderAlias} sent you a ${isUrl ? "link" : "message"}:`;
+			this._textLabel!.text = text;
+			this.setButtons([
+				{ label: "Close", action: () => this.close() },
+				{ label: "Copy", default: !isUrl, action: () => { St.Clipboard.get_default().set_text(St.ClipboardType.CLIPBOARD, text); this.close(); } },
+				...(isUrl ? [{ label: "Open", default: true, action: () => { void Gio.AppInfo.launch_default_for_uri(text.trim(), null); this.close(); } }] : []),
+			] as any);
+			this.open();
+		}
+
+		override destroy(): void {
+			this._senderLabel?.destroy();
+			this._senderLabel = null;
+			this._textLabel?.destroy();
+			this._textLabel = null;
+			super.destroy();
+		}
+	},
+);
+
 const IncomingTransferDialog = GObject.registerClass(
 	{ GTypeName: "GLocalSend_IncomingTransferDialog" },
 	class IncomingTransferDialog extends ModalDialog.ModalDialog {
@@ -355,6 +407,7 @@ export default class LocalSendCompanionExtension extends Extension {
 	private _incomingDialog: InstanceType<typeof IncomingTransferDialog> | null =
 		null;
 
+
 	enable(): void {
 		this._settings = this.getSettings(
 			SETTINGS_SCHEMA,
@@ -372,9 +425,13 @@ export default class LocalSendCompanionExtension extends Extension {
 			},
 			onIncomingTransfer: async (request) => {
 				if (this._settings!.get_boolean(KEY_AUTO_ACCEPT)) return true;
+				if (request.files.every((f) => f.fileType === "text/plain")) return true;
 
 				const dialog = this._ensureIncomingDialog();
 				return await dialog.prompt(request.sender, request);
+			},
+			onTextReceived: (sender, text) => {
+				new ReceivedTextDialog().present(sender.alias, text);
 			},
 		});
 

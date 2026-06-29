@@ -48,6 +48,7 @@ export interface LocalSendServiceCallbacks {
 	onStateChanged(): void;
 	onNotification(summary: string, body: string, actionUri?: string): void;
 	onIncomingTransfer(request: IncomingTransferRequest): Promise<boolean>;
+	onTextReceived(sender: LocalSendPeer, text: string): void;
 }
 
 interface AcceptedIncomingFile {
@@ -796,6 +797,18 @@ export class LocalSendService {
 			}
 
 			const bytes = this._requestBodyBytes(message);
+
+			if (fileEntry.file.fileType === "text/plain") {
+				fileEntry.received = true;
+				this._respondJson(message, 200, null);
+				if ([...this._incomingSession.files.values()].every((e) => e.received)) {
+					const { sender } = this._incomingSession;
+					this._incomingSession = null;
+					this._callbacks.onTextReceived(sender, new TextDecoder().decode(bytes));
+				}
+				return;
+			}
+
 			const fileName = sanitizeFileName(fileEntry.file.fileName);
 			const targetPath = this._makeUniquePath(
 				this._incomingSession.destinationFolder,
