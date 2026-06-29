@@ -49,19 +49,12 @@ export interface MulticastInfo extends RegisterInfo {
 	announcement?: boolean;
 }
 
-export interface FileMetadata {
-	modified?: string | null;
-	accessed?: string | null;
-}
-
 export interface FileDto {
 	id: string;
 	fileName: string;
 	size: number;
 	fileType: string;
-	sha256?: string | null;
 	preview?: string | null;
-	metadata?: FileMetadata | null;
 }
 
 export interface PrepareUploadRequest {
@@ -114,17 +107,6 @@ export function formatBytes(bytes: number): string {
 		: `${value.toFixed(1)} ${units[unitIndex]}`;
 }
 
-export function formatRemainingTime(totalSeconds: number): string {
-	const seconds = Math.max(0, Math.floor(totalSeconds));
-	const hours = Math.floor(seconds / 3600);
-	const minutes = Math.floor((seconds % 3600) / 60);
-	const remainingSeconds = seconds % 60;
-
-	if (hours > 0) return `${hours}h ${String(minutes).padStart(2, "0")}m`;
-
-	return `${String(minutes).padStart(2, "0")}:${String(remainingSeconds).padStart(2, "0")}`;
-}
-
 export function encodeJson(value: unknown): GLib.Bytes {
 	return GLib.Bytes.new(new TextEncoder().encode(JSON.stringify(value)));
 }
@@ -134,10 +116,6 @@ export function decodeJson<T>(bytes: Uint8Array | null | undefined): T {
 		throw new Error("Empty response body.");
 
 	return JSON.parse(new TextDecoder().decode(bytes)) as T;
-}
-
-export function bytesFromString(value: string): GLib.Bytes {
-	return GLib.Bytes.new(new TextEncoder().encode(value));
 }
 
 export function stringFromBytes(bytes: Uint8Array | null | undefined): string {

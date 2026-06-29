@@ -16,7 +16,6 @@ import {
 	ensureFingerprint,
 	getDefaultDownloadFolder,
 	sanitizeFileName,
-	stringFromBytes,
 	type DeviceInfo,
 	type FileDto,
 	type MulticastInfo,
@@ -64,19 +63,7 @@ interface IncomingSession {
 	files: Map<string, AcceptedIncomingFile>;
 }
 
-function now(): number {
-	return Date.now();
-}
-
 const DEBUG_LOGGING = false;
-
-function toBytes(value: Uint8Array | string): Uint8Array {
-	return typeof value === "string" ? new TextEncoder().encode(value) : value;
-}
-
-function textFromJsonBytes(bytes: Uint8Array | null | undefined): string {
-	return stringFromBytes(bytes);
-}
 
 const SOCKET_LEVEL_SOL = 1;
 const SOCKET_OPTION_REUSEADDR = 2;
@@ -91,6 +78,7 @@ const HTTP_STATUS_PHRASES: Record<number, string> = {
 	412: "Precondition Failed",
 	500: "Internal Server Error",
 };
+const PEER_STALE_MS = 180_000;
 const REJECT_MESSAGE = "The recipient has rejected the request.";
 
 function parseRequestUrl(message: any): {
@@ -170,7 +158,7 @@ export class LocalSendService {
 
 	get peers(): LocalSendPeer[] {
 		return [...this._peers.values()]
-			.filter((peer) => now() - peer.lastSeenAt < 180_000)
+			.filter((peer) => Date.now() - peer.lastSeenAt < PEER_STALE_MS)
 			.sort((left, right) => left.alias.localeCompare(right.alias));
 	}
 
@@ -396,27 +384,6 @@ export class LocalSendService {
 		return getDefaultDownloadFolder();
 	}
 
-	isPortStillBound(): boolean {
-		try {
-			const socket = Gio.Socket.new(
-				Gio.SocketFamily.IPV4,
-				Gio.SocketType.STREAM,
-				Gio.SocketProtocol.TCP,
-			);
-			socket.bind(
-				new Gio.InetSocketAddress({
-					address: Gio.InetAddress.new_any(Gio.SocketFamily.IPV4),
-					port: this._port,
-				}),
-				true,
-			);
-			socket.close();
-			return false;
-		} catch {
-			return true;
-		}
-	}
-
 	private _portIsStillBound(): boolean {
 		try {
 			const socket = Gio.Socket.new(
@@ -506,7 +473,7 @@ export class LocalSendService {
 		let changed = false;
 
 		for (const [fingerprint, peer] of this._peers.entries()) {
-			if (now() - peer.lastSeenAt < 180_000) continue;
+			if (Date.now() - peer.lastSeenAt < PEER_STALE_MS) continue;
 
 			this._peers.delete(fingerprint);
 			changed = true;
@@ -619,7 +586,7 @@ export class LocalSendService {
 			protocol: payload.protocol ?? ProtocolType.Http,
 			download: payload.download ?? false,
 			ip,
-			lastSeenAt: now(),
+			lastSeenAt: Date.now(),
 		};
 
 		this._rememberPeer(peer);
@@ -686,7 +653,7 @@ export class LocalSendService {
 			this._rememberPeer({
 				...request,
 				ip: query.ip ?? this._remoteIp(message),
-				lastSeenAt: now(),
+				lastSeenAt: Date.now(),
 			});
 
 			this._respondJson(message, 200, this._buildInfoPayload());
@@ -734,7 +701,7 @@ export class LocalSendService {
 				protocol: sender.protocol,
 				download: sender.download,
 				ip: this._remoteIp(message),
-				lastSeenAt: now(),
+				lastSeenAt: Date.now(),
 			};
 
 			const accepted = await this._callbacks.onIncomingTransfer({
@@ -897,16 +864,14 @@ export class LocalSendService {
 
 		for (const item of items) {
 			const id = GLib.uuid_string_random();
-			const bytes = toBytes(item.bytes);
+			const bytes = item.bytes;
 			buffers.set(id, bytes);
 			files[id] = {
 				id,
 				fileName: sanitizeFileName(item.fileName),
 				size: bytes.length,
 				fileType: item.mimeType,
-				sha256: null,
 				preview: item.preview ?? null,
-				metadata: null,
 			};
 		}
 
