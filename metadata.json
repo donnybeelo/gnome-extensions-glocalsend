@@ -1,7 +1,7 @@
 {
 	"name": "GLocalSend",
 	"description": "A LocalSend client integrated into the GNOME Quick Settings\n\nFiles, text and clipboard data can be sent to nearby devices upon the user's request using the appropriate buttons in each device's dropdown menu.\n\nUses Main.panel.statusArea.quickSettings to add the indicator (private API; required for Quick Settings integration).",
-	"uuid": "glocalsend@donnybeelo.net",
+	"uuid": "glocalsend@donnybeelo.github.com",
 	"url": "https://github.com/donnybeelo/gnome-extensions-glocalsend",
 	"settings-schema": "org.gnome.shell.extensions.glocalsend",
 	"shell-version": ["45", "46", "47", "48", "49", "50"]

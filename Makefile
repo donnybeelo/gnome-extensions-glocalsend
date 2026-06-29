@@ -1,5 +1,5 @@
 NAME=glocalsend
-DOMAIN=donnybeelo.net
+DOMAIN=donnybeelo.github.com
 
 .PHONY: all pack install clean
 
