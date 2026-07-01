@@ -40,6 +40,6 @@ A menu item should appear in the Quick Settings menu with the LocalSend icon. Yo
 
 ## Incoming transfers
 
-When another LocalSend device sends you files, a prompt will appear in GNOME Shell, unless auto-accept is enabled. 
+When another LocalSend device sends you files, a prompt will appear in GNOME Shell, unless auto-accept is enabled.
 
 Accepted files are saved to `~/Downloads/LocalSend` by default. You can change receiving behavior in the extension's preferences.

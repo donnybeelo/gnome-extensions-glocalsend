@@ -3,10 +3,10 @@ import "@girs/gjs/dom";
 import "@girs/gnome-shell/ambient";
 import "@girs/gnome-shell/extensions/global";
 
-declare module 'gi://Soup' {
-  import Gio from 'gi://Gio';
-  import GLib from 'gi://GLib';
-  import GObject from 'gi://GObject';
+declare module "gi://Soup" {
+  import Gio from "gi://Gio";
+  import GLib from "gi://GLib";
+  import GObject from "gi://GObject";
 
   export enum MemoryUse {
     COPY = 1,
@@ -30,8 +30,15 @@ declare module 'gi://Soup' {
     get_request_body(): MessageBody;
     get_status(): number;
     get_uri(): GLib.Uri;
-    set_request_body_from_bytes(contentType: string | null, bytes: GLib.Bytes | Uint8Array | null): void;
-    set_response(contentType: string | null, respUse: MemoryUse, respBody: string | Uint8Array | null): void;
+    set_request_body_from_bytes(
+      contentType: string | null,
+      bytes: GLib.Bytes | Uint8Array | null,
+    ): void;
+    set_response(
+      contentType: string | null,
+      respUse: MemoryUse,
+      respBody: string | Uint8Array | null,
+    ): void;
     set_status(statusCode: number, reasonPhrase?: string | null): void;
   }
 
@@ -55,7 +62,16 @@ declare module 'gi://Soup' {
   export class Server extends GObject.Object {
     static new(...args: unknown[]): Server;
 
-    add_handler(path: string | null, callback: (server: Server, msg: ServerMessage, path: string, query: string, client: unknown) => void): void;
+    add_handler(
+      path: string | null,
+      callback: (
+        server: Server,
+        msg: ServerMessage,
+        path: string,
+        query: string,
+        client: unknown,
+      ) => void,
+    ): void;
     listen_all(port: number, options: number): boolean;
     listen_local(port: number, options: number): boolean;
   }

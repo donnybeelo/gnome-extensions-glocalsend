@@ -16,6 +16,9 @@
         "@girs/st-17": "17.0.0-4.0.0-beta.43",
         "typescript": "^6.0.2",
       },
+      "devDependencies": {
+        "prettier": "3.9.4",
+      },
     },
   },
   "packages": {
@@ -104,6 +107,8 @@
     "@girs/xfixes-4.0": ["@girs/xfixes-4.0@4.0.0-4.0.0-beta.43", "", { "dependencies": { "@girs/gjs": "4.0.0-beta.43", "@girs/gobject-2.0": "2.88.0-4.0.0-beta.43" } }, "sha512-V1ra9we8I9iOCvy3lGspst6W3CT7WjtdaCcMA1dyt3TkS0GUppIS5mDtW3njQyRk1X+0ZQXL5zZQdBvDjGM9mQ=="],
 
     "@girs/xlib-2.0": ["@girs/xlib-2.0@2.0.0-4.0.0-beta.43", "", { "dependencies": { "@girs/gjs": "4.0.0-beta.43", "@girs/gobject-2.0": "2.88.0-4.0.0-beta.43" } }, "sha512-ukeuGJJoMdUyJkQb0rY2DzU6u1fBCuWPpw6qyi1SutXBwzWLel/Osdxn+07i5Ha4+0RQ6kCAOdMYzwinFjLaBA=="],
+
+    "prettier": ["prettier@3.9.4", "", { "bin": { "prettier": "bin/prettier.cjs" } }, "sha512-yWG/o/4oJfo036EKAfK6ACAoDOfHeRHx4tuxkfBZiauURiaSmYwlpOr5LQqKtIkRD2z1PLteme2WoxEnj4tHTg=="],
 
     "typescript": ["typescript@6.0.2", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-bGdAIrZ0wiGDo5l8c++HWtbaNCWTS4UTv7RaTH/ThVIgjkveJt83m74bBHMJkuCbslY8ixgLBVZJIOiQlQTjfQ=="],
 
