@@ -10,7 +10,6 @@ import {
   KEY_DOWNLOAD_FOLDER,
   KEY_FINGERPRINT,
   KEY_PORT,
-  SETTINGS_SCHEMA,
   ensureAlias,
   getDefaultDownloadFolder,
 } from "./common.js";
@@ -24,9 +23,7 @@ export default class LocalSendCompanionPreferences extends ExtensionPreferences 
   override async fillPreferencesWindow(
     window: Adw.PreferencesWindow,
   ): Promise<void> {
-    const settings = this.getSettings(
-      SETTINGS_SCHEMA,
-    ) as unknown as Gio.Settings;
+    const settings = this.getSettings() as unknown as Gio.Settings;
 
     if (settings.get_string(KEY_ALIAS).trim().length === 0)
       settings.set_string(KEY_ALIAS, ensureAlias(""));

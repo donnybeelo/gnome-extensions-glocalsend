@@ -122,7 +122,6 @@ export class LocalSendService {
   private readonly _session: any;
   private readonly _server: any;
 
-  private _enabled = false;
   private _autoDisableSourceId: number | null = null;
   private _alias: string;
   private _fingerprint: string;
@@ -161,7 +160,7 @@ export class LocalSendService {
   }
 
   get enabled(): boolean {
-    return this._enabled;
+    return this._cancellable !== null;
   }
 
   get peers(): LocalSendPeer[] {
@@ -183,7 +182,7 @@ export class LocalSendService {
   }
 
   toggleEnabled(): void {
-    if (this._enabled) {
+    if (this.enabled) {
       this.stop();
       return;
     }
@@ -235,7 +234,7 @@ export class LocalSendService {
   }
 
   start(): void {
-    if (this._enabled) return;
+    if (this.enabled) return;
 
     this._cancelAutoDisable();
 
@@ -261,7 +260,7 @@ export class LocalSendService {
       GLib.PRIORITY_DEFAULT,
       60,
       () => {
-        if (!this._enabled) return GLib.SOURCE_REMOVE;
+        if (!this.enabled) return GLib.SOURCE_REMOVE;
 
         this._sendAnnouncement();
         return GLib.SOURCE_CONTINUE;
@@ -272,14 +271,13 @@ export class LocalSendService {
       GLib.PRIORITY_DEFAULT,
       30,
       () => {
-        if (!this._enabled) return GLib.SOURCE_REMOVE;
+        if (!this.enabled) return GLib.SOURCE_REMOVE;
 
         this._prunePeers();
         return GLib.SOURCE_CONTINUE;
       },
     );
 
-    this._enabled = true;
     this._callbacks.onStateChanged();
     this._scheduleAutoDisable();
   }
@@ -287,9 +285,8 @@ export class LocalSendService {
   stop(): void {
     this._cancelAutoDisable();
 
-    if (!this._enabled) return;
+    if (!this.enabled) return;
 
-    this._enabled = false;
     this._session.abort();
     this._cancellable?.cancel();
     this._cancellable = null;
@@ -323,7 +320,7 @@ export class LocalSendService {
   }
 
   refreshPeers(): void {
-    if (!this._enabled) return;
+    if (!this.enabled) return;
 
     this._sendAnnouncement();
   }

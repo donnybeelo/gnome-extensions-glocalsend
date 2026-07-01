@@ -11,12 +11,7 @@ import * as PopupMenu from "resource:///org/gnome/shell/ui/popupMenu.js";
 import * as ModalDialog from "resource:///org/gnome/shell/ui/modalDialog.js";
 import { Extension } from "resource:///org/gnome/shell/extensions/extension.js";
 
-import {
-  DeviceType,
-  formatBytes,
-  KEY_AUTO_ACCEPT,
-  SETTINGS_SCHEMA,
-} from "./common.js";
+import { DeviceType, formatBytes, KEY_AUTO_ACCEPT } from "./common.js";
 import {
   type IncomingTransferRequest,
   type LocalSendPeer,
@@ -25,8 +20,6 @@ import {
 
 Gio._promisify(Gio.DBusProxy.prototype, "call", "call_finish");
 
-const EXTENSION_DIR = import.meta.url.replace(/file:\/\/(.*)\/[^/]+$/, "$1");
-const INDICATOR_ICON = `file://${EXTENSION_DIR}/icon-symbolic.svg`;
 const DEFAULT_PEER_ICON = "network-workgroup-symbolic";
 
 const PEER_DEVICE_ICONS: Partial<Record<DeviceType, string>> = {
@@ -65,11 +58,11 @@ const FileChooserXml = `
 const LocalSendToggle = GObject.registerClass(
   { GTypeName: "GLocalSend_LocalSendToggle" },
   class LocalSendToggle extends QuickSettings.QuickMenuToggle {
-    constructor() {
+    constructor(iconPath: string) {
       super({
         title: "LocalSend",
         subtitle: "Starting",
-        gicon: Gio.icon_new_for_string(INDICATOR_ICON) as any,
+        gicon: Gio.icon_new_for_string(iconPath) as any,
         menuEnabled: true,
       });
     }
@@ -82,16 +75,17 @@ const LocalSendIndicator = GObject.registerClass(
     _indicator: St.Icon;
     toggle: InstanceType<typeof LocalSendToggle>;
 
-    constructor() {
+    constructor(iconPath: string) {
       super();
 
       this._indicator = this._addIndicator();
-      this._indicator.gicon = Gio.icon_new_for_string(INDICATOR_ICON) as any;
+      this._indicator.gicon = Gio.icon_new_for_string(iconPath) as any;
       this._indicator.visible = false;
 
-      this.toggle = new LocalSendToggle();
+      this.toggle = new LocalSendToggle(iconPath);
       this.quickSettingsItems.push(this.toggle);
     }
+
     override destroy() {
       this.quickSettingsItems?.forEach((i) => {
         i.destroy();
@@ -111,7 +105,6 @@ const TextPromptDialog = GObject.registerClass(
     private _errorLabel: St.Label | null = null;
     private _entry: St.Entry | null = null;
     private _resolve: ((value: string | null) => void) | null = null;
-    private _activateSignalId: number | null = null;
     private _content: St.BoxLayout | null = null;
 
     constructor() {
@@ -161,12 +154,9 @@ const TextPromptDialog = GObject.registerClass(
       this.contentLayout.add_child(this._content);
       this.setInitialKeyFocus(this._entry);
 
-      this._activateSignalId = this._entry.clutter_text.connect(
-        "activate",
-        () => {
-          this._submit();
-        },
-      );
+      this._entry.clutter_text.connect("activate", () => {
+        this._submit();
+      });
 
       this.setButtons([
         {
@@ -206,11 +196,6 @@ const TextPromptDialog = GObject.registerClass(
     }
 
     override destroy(): void {
-      if (this._activateSignalId !== null) {
-        this._entry!.clutter_text.disconnect(this._activateSignalId);
-        this._activateSignalId = null;
-      }
-
       this._resolvePrompt(null);
       this._titleLabel!.destroy();
       this._titleLabel = null;
@@ -419,7 +404,6 @@ const IncomingTransferDialog = GObject.registerClass(
 
 export default class LocalSendCompanionExtension extends Extension {
   private _settings!: Gio.Settings | null;
-  private _destroyed = false;
   private _indicator: InstanceType<typeof LocalSendIndicator> | null = null;
   private _indicatorClickedSignalId: number | null = null;
   private _service: LocalSendService | null = null;
@@ -428,10 +412,12 @@ export default class LocalSendCompanionExtension extends Extension {
   private _incomingDialog: InstanceType<typeof IncomingTransferDialog> | null =
     null;
 
+  private get _iconPath(): string {
+    return `file://${this.path}/icon-symbolic.svg`;
+  }
+
   enable(): void {
-    this._settings = this.getSettings(
-      SETTINGS_SCHEMA,
-    ) as unknown as Gio.Settings;
+    this._settings = this.getSettings() as unknown as Gio.Settings;
 
     this._service = new LocalSendService(this._settings, {
       onStateChanged: () => {
@@ -456,7 +442,7 @@ export default class LocalSendCompanionExtension extends Extension {
       },
     });
 
-    this._indicator = new LocalSendIndicator();
+    this._indicator = new LocalSendIndicator(this._iconPath);
     this._indicatorClickedSignalId = this._indicator.toggle.connect(
       "clicked",
       () => {
@@ -478,7 +464,6 @@ export default class LocalSendCompanionExtension extends Extension {
   }
 
   disable(): void {
-    this._destroyed = true;
     this._service?.stop();
     this._service = null;
 
@@ -525,7 +510,7 @@ export default class LocalSendCompanionExtension extends Extension {
     this._indicator.toggle.checked = enabled;
     this._indicator.toggle.subtitle = subtitle;
     this._indicator.toggle.menu.setHeader(
-      Gio.icon_new_for_string(INDICATOR_ICON) as any,
+      Gio.icon_new_for_string(this._iconPath) as any,
       "LocalSend",
       subheader,
     );
@@ -748,7 +733,7 @@ export default class LocalSendCompanionExtension extends Extension {
     try {
       await action();
     } catch (error) {
-      if (this._destroyed) return;
+      if (this._service === null) return;
       const message = (error as Error).message ?? String(error);
       Main.notifyError(title, message);
     }

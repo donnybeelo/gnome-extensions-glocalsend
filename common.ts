@@ -1,7 +1,5 @@
 import GLib from "gi://GLib";
 
-export const SETTINGS_SCHEMA = "org.gnome.shell.extensions.glocalsend";
-
 export const PROTOCOL_VERSION = "2.1";
 export const DEFAULT_PORT = 53317;
 export const DEFAULT_MULTICAST_GROUP = "224.0.0.167";
