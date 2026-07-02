@@ -560,13 +560,16 @@ export default class LocalSendCompanionExtension extends Extension {
     );
 
     if (enabled) {
-      this._indicator.toggle.menu.addAction(
+      const refreshItem = this._indicator.toggle.menu.addAction(
         "Refresh nearby devices",
         () => {
           this._service?.refreshPeers();
         },
         Gio.icon_new_for_string("view-refresh-symbolic") as any,
       );
+      refreshItem.activate = () => {
+        this._service?.refreshPeers();
+      };
     }
 
     this._indicator.toggle.menu.addAction("LocalSend Settings", () => {
