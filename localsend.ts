@@ -322,6 +322,8 @@ export class LocalSendService {
   refreshPeers(): void {
     if (!this.enabled) return;
 
+    this._peers.clear();
+    this._callbacks.onStateChanged();
     this._sendAnnouncement();
   }
 
