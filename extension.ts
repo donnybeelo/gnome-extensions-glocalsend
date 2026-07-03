@@ -1,5 +1,6 @@
 import Clutter from "gi://Clutter";
 import Gio from "gi://Gio";
+import Graphene from "gi://Graphene";
 import GLib from "gi://GLib";
 import St from "gi://St";
 import Shell from "gi://Shell";
@@ -411,6 +412,7 @@ export default class LocalSendCompanionExtension extends Extension {
     null;
   private _incomingDialog: InstanceType<typeof IncomingTransferDialog> | null =
     null;
+  private _knownPeers = new Map<string, LocalSendPeer>();
 
   private get _iconPath(): string {
     return `file://${this.path}/icon-symbolic.svg`;
@@ -466,6 +468,7 @@ export default class LocalSendCompanionExtension extends Extension {
   disable(): void {
     this._service?.stop();
     this._service = null;
+    this._knownPeers.clear();
 
     this._textPromptDialog?.destroy();
     this._textPromptDialog = null;
@@ -488,6 +491,42 @@ export default class LocalSendCompanionExtension extends Extension {
     }
 
     this._settings = null;
+  }
+
+  private _buildPeerItem(
+    peer: LocalSendPeer,
+  ): InstanceType<typeof PopupMenu.PopupSubMenuMenuItem> {
+    const peerItem = new PopupMenu.PopupSubMenuMenuItem(peer.alias, true);
+    const peerIcon = peerItem.icon;
+    if (peerIcon !== undefined) {
+      peerIcon.gicon = Gio.icon_new_for_string(getPeerIconName(peer)) as any;
+    }
+
+    peerItem.menu.addAction(
+      "Send files",
+      () => {
+        void this._sendFilesToPeer(peer);
+      },
+      Gio.icon_new_for_string("document-send-symbolic") as any,
+    );
+
+    peerItem.menu.addAction(
+      "Send clipboard text",
+      () => {
+        void this._sendClipboardTextToPeer(peer);
+      },
+      Gio.icon_new_for_string("edit-paste-symbolic") as any,
+    );
+
+    peerItem.menu.addAction(
+      "Type text",
+      () => {
+        void this._promptAndSendText(peer);
+      },
+      Gio.icon_new_for_string("insert-text-symbolic") as any,
+    );
+
+    return peerItem;
   }
 
   private _syncIndicator(): void {
@@ -515,45 +554,41 @@ export default class LocalSendCompanionExtension extends Extension {
       subheader,
     );
 
+    const previousPeers = this._knownPeers;
+    const currentFingerprints = new Set(peers.map((peer) => peer.fingerprint));
+    const leavingPeers = [...previousPeers.values()].filter(
+      (peer) => !currentFingerprints.has(peer.fingerprint),
+    );
+
     this._indicator.toggle.menu.removeAll();
 
-    if (enabled && peers.length > 0) {
+    if (enabled) {
       for (const peer of peers) {
-        const peerItem = new PopupMenu.PopupSubMenuMenuItem(peer.alias, true);
-        const peerIcon = peerItem.icon;
-        if (peerIcon !== undefined) {
-          peerIcon.gicon = Gio.icon_new_for_string(
-            getPeerIconName(peer),
-          ) as any;
+        const isNewPeer = !previousPeers.has(peer.fingerprint);
+        const peerItem = this._buildPeerItem(peer);
+
+        if (isNewPeer) {
+          peerItem.opacity = 0;
+          peerItem.ease({ opacity: 255, duration: 200 });
         }
-
-        peerItem.menu.addAction(
-          "Send files",
-          () => {
-            void this._sendFilesToPeer(peer);
-          },
-          Gio.icon_new_for_string("document-send-symbolic") as any,
-        );
-
-        peerItem.menu.addAction(
-          "Send clipboard text",
-          () => {
-            void this._sendClipboardTextToPeer(peer);
-          },
-          Gio.icon_new_for_string("edit-paste-symbolic") as any,
-        );
-
-        peerItem.menu.addAction(
-          "Type text",
-          () => {
-            void this._promptAndSendText(peer);
-          },
-          Gio.icon_new_for_string("insert-text-symbolic") as any,
-        );
 
         this._indicator.toggle.menu.addMenuItem(peerItem);
       }
+
+      for (const peer of leavingPeers) {
+        const peerItem = this._buildPeerItem(peer);
+        this._indicator.toggle.menu.addMenuItem(peerItem);
+        peerItem.ease({
+          opacity: 0,
+          duration: 200,
+          onStopped: () => {
+            if (peerItem.get_parent() !== null) peerItem.destroy();
+          },
+        });
+      }
     }
+
+    this._knownPeers = new Map(peers.map((peer) => [peer.fingerprint, peer]));
 
     this._indicator.toggle.menu.addMenuItem(
       new PopupMenu.PopupSeparatorMenuItem(),
@@ -562,13 +597,19 @@ export default class LocalSendCompanionExtension extends Extension {
     if (enabled) {
       const refreshItem = this._indicator.toggle.menu.addAction(
         "Refresh nearby devices",
-        () => {
-          this._service?.refreshPeers();
-        },
-        Gio.icon_new_for_string("view-refresh-symbolic") as any,
+        () => {},
+        Gio.icon_new_for_string("view-refresh-symbolic"),
       );
       refreshItem.activate = () => {
-        this._service?.refreshPeers();
+        const icon = (refreshItem as any)._icon as Clutter.Actor;
+        icon.pivot_point = new Graphene.Point({ x: 0.5, y: 0.5 });
+        icon.ease({ rotationAngleZ: 0, duration: 0 });
+        icon.ease({
+          rotationAngleZ: 360,
+          duration: 300,
+          mode: Clutter.AnimationMode.EASE_OUT_CUBIC,
+        });
+        setTimeout(() => this._service?.refreshPeers(), 300)
       };
     }
 
