@@ -8,6 +8,12 @@ Gio._promisify(
   "send_and_read_finish",
 );
 
+Gio._promisify(
+  Gio.File.prototype,
+  "load_bytes_async",
+  "load_bytes_finish",
+);
+
 import {
   DEFAULT_MULTICAST_GROUP,
   DEFAULT_PORT,
@@ -342,7 +348,7 @@ export class LocalSendService {
           Gio.FileQueryInfoFlags.NONE,
           null,
         );
-        const [bytes] = await file.load_bytes_async(this._cancellable);
+        const [bytes] = await file.load_bytes_async(null);
 
         return {
           fileName: sanitizeFileName(info.get_display_name()),
