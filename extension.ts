@@ -22,6 +22,8 @@ import {
 Gio._promisify(Gio.DBusProxy.prototype, "call", "call_finish");
 
 const DEFAULT_PEER_ICON = "network-workgroup-symbolic";
+const SPIN_MS = 15000;
+const STOP_STEP = 45;
 
 const PEER_DEVICE_ICONS: Partial<Record<DeviceType, string>> = {
   [DeviceType.Mobile]: "smartphone-symbolic",
@@ -75,6 +77,8 @@ const LocalSendIndicator = GObject.registerClass(
   class LocalSendIndicator extends QuickSettings.SystemIndicator {
     _indicator: St.Icon;
     toggle: InstanceType<typeof LocalSendToggle>;
+    _spin: Clutter.PropertyTransition;
+    _pauseId = 0;
 
     constructor(iconPath: string) {
       super();
@@ -85,9 +89,52 @@ const LocalSendIndicator = GObject.registerClass(
 
       this.toggle = new LocalSendToggle(iconPath);
       this.quickSettingsItems.push(this.toggle);
+
+      this._spin = new Clutter.PropertyTransition({
+        property_name: "rotation-angle-z",
+        duration: SPIN_MS,
+        progress_mode: Clutter.AnimationMode.LINEAR,
+        repeat_count: -1,
+      });
+      this._spin.set_from(0);
+      this._spin.set_to(360);
+      this._indicator.pivot_point = new Graphene.Point({ x: 0.5, y: 0.5 });
+      this._indicator.add_transition("rotation-angle-z", this._spin);
+      this._spin.pause();
+
+      const inner = (this.toggle as any)._box.get_first_child();
+      for (const a of [inner._icon, (this.toggle.menu as any)._headerIcon]) {
+        a.pivot_point = this._indicator.pivot_point;
+        this._indicator.bind_property(
+          "rotation-angle-z",
+          a,
+          "rotation-angle-z",
+          GObject.BindingFlags.SYNC_CREATE,
+        );
+      }
+    }
+
+    setSpinning(on: boolean) {
+      if (this._pauseId) GLib.source_remove(this._pauseId);
+      this._pauseId = 0;
+
+      if (on) {
+        if (St.Settings.get().enable_animations) this._spin.start();
+        return;
+      }
+
+      const angle = this._indicator.rotation_angle_z;
+      const target = Math.min(Math.ceil(angle / STOP_STEP) * STOP_STEP, 360);
+      const ms = Math.round(((target - angle) / 360) * SPIN_MS);
+      this._pauseId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, ms, () => {
+        this._spin.pause();
+        this._pauseId = 0;
+        return GLib.SOURCE_REMOVE;
+      });
     }
 
     override destroy() {
+      if (this._pauseId) GLib.source_remove(this._pauseId);
       this.quickSettingsItems?.forEach((i) => {
         i.destroy();
       });
@@ -533,6 +580,7 @@ export default class LocalSendCompanionExtension extends Extension {
     if (this._indicator === null || this._service === null) return;
 
     const enabled = this._service.enabled;
+    this._indicator.setSpinning(enabled);
     const peers = this._service.peers;
     const alias = this._settings!.get_string("alias");
     const subtitle = enabled ? alias : null;
