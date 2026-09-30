@@ -7,6 +7,7 @@ Gio._promisify(
   "send_and_read_async",
   "send_and_read_finish",
 );
+Gio._promisify(Gio.File.prototype, "load_bytes_async", "load_bytes_finish");
 
 import {
   DEFAULT_MULTICAST_GROUP,
@@ -362,7 +363,7 @@ export class LocalSendService {
   ): Promise<void> {
     const trimmed = text.trim();
     if (trimmed.length === 0)
-      throw new Error("The clipboard does not contain any text.");
+      throw new Error("The clipboard is empty.");
 
     await this._sendOutgoingItems(peer, [
       {
@@ -370,6 +371,21 @@ export class LocalSendService {
         bytes: new TextEncoder().encode(trimmed),
         mimeType: "text/plain",
         preview: trimmed,
+      },
+    ]);
+  }
+
+  async sendClipboardImageToPeer(
+    peer: LocalSendPeer,
+    bytes: Uint8Array,
+    mimeType: string,
+  ): Promise<void> {
+    await this._sendOutgoingItems(peer, [
+      {
+        fileName: `clipboard.${mimeType.split("/")[1]}`,
+        bytes,
+        mimeType,
+        preview: null,
       },
     ]);
   }

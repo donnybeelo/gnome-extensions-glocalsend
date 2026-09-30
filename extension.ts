@@ -560,9 +560,9 @@ export default class LocalSendCompanionExtension extends Extension {
     );
 
     peerItem.menu.addAction(
-      "Send clipboard text",
+      "Send clipboard",
       () => {
-        void this._sendClipboardTextToPeer(peer);
+        void this._sendClipboardToPeer(peer);
       },
       Gio.icon_new_for_string("edit-paste-symbolic") as any,
     );
@@ -775,21 +775,52 @@ export default class LocalSendCompanionExtension extends Extension {
     });
   }
 
-  private async _sendClipboardTextToPeer(peer: LocalSendPeer): Promise<void> {
-    await this._runUserAction(
-      `Send clipboard text to ${peer.alias}`,
-      async () => {
-        const clipboard = St.Clipboard.get_default();
-        // clipboard is read only here, on explicit user menu action — never automatic
-        const text = await new Promise<string>((resolve) => {
-          clipboard.get_text(null, (_clipboard, value) => {
-            resolve(value ?? "");
+  private async _sendClipboardToPeer(peer: LocalSendPeer): Promise<void> {
+    await this._runUserAction(`Send clipboard to ${peer.alias}`, async () => {
+      const clipboard = St.Clipboard.get_default();
+      const type = St.ClipboardType.CLIPBOARD;
+      // clipboard is read only here, on explicit user menu action — never automatic
+      const mimes = clipboard.get_mimetypes(type);
+      const read = (mime: string) =>
+        new Promise<Uint8Array>((resolve) => {
+          clipboard.get_content(type, mime, (_c, bytes) => {
+            resolve(
+              (bytes instanceof Uint8Array ? bytes : bytes?.get_data()) ??
+                new Uint8Array(),
+            );
           });
         });
 
-        await this._service?.sendClipboardTextToPeer(peer, text);
-      },
-    );
+      if (mimes.includes("text/uri-list")) {
+        const paths = new TextDecoder()
+          .decode(await read("text/uri-list"))
+          .split(/\r?\n/)
+          .filter((l) => l && !l.startsWith("#"))
+          .map((uri) => Gio.File.new_for_uri(uri).get_path())
+          .filter((p): p is string => p !== null);
+        if (paths.length > 0) {
+          await this._service?.sendFilesToPeer(peer, paths);
+          return;
+        }
+      }
+
+      const image = mimes.includes("image/png")
+        ? "image/png"
+        : mimes.find((m) => m.startsWith("image/"));
+      if (image) {
+        await this._service?.sendClipboardImageToPeer(
+          peer,
+          await read(image),
+          image,
+        );
+        return;
+      }
+
+      const text = await new Promise<string>((resolve) => {
+        clipboard.get_text(type, (_c, value) => resolve(value ?? ""));
+      });
+      await this._service?.sendClipboardTextToPeer(peer, text);
+    });
   }
 
   private async _promptAndSendText(peer: LocalSendPeer): Promise<void> {
