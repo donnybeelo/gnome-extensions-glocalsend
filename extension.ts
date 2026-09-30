@@ -22,7 +22,7 @@ import {
 Gio._promisify(Gio.DBusProxy.prototype, "call", "call_finish");
 
 const DEFAULT_PEER_ICON = "network-workgroup-symbolic";
-const SPIN_MS = 15000;
+const SPIN_MS = 10000;
 const STOP_STEP = 45;
 
 const PEER_DEVICE_ICONS: Partial<Record<DeviceType, string>> = {
@@ -154,6 +154,7 @@ const TextPromptDialog = GObject.registerClass(
     private _entry: St.Entry | null = null;
     private _resolve: ((value: string | null) => void) | null = null;
     private _content: St.BoxLayout | null = null;
+    private _activateId = 0;
 
     constructor() {
       super({
@@ -202,7 +203,7 @@ const TextPromptDialog = GObject.registerClass(
       this.contentLayout.add_child(this._content);
       this.setInitialKeyFocus(this._entry);
 
-      this._entry.clutter_text.connect("activate", () => {
+      this._activateId = this._entry.clutter_text.connect("activate", () => {
         this._submit();
       });
 
@@ -251,6 +252,7 @@ const TextPromptDialog = GObject.registerClass(
       this._descriptionLabel = null;
       this._errorLabel!.destroy();
       this._errorLabel = null;
+      this._entry!.clutter_text.disconnect(this._activateId);
       this._entry!.destroy();
       this._entry = null;
       this._content!.destroy();
@@ -653,11 +655,11 @@ export default class LocalSendCompanionExtension extends Extension {
         icon.pivot_point = new Graphene.Point({ x: 0.5, y: 0.5 });
         icon.ease({ rotationAngleZ: 0, duration: 0 });
         icon.ease({
-          rotationAngleZ: 360,
+          rotation_angle_z: 360,
           duration: 300,
           mode: Clutter.AnimationMode.EASE_OUT_CUBIC,
-        });
-        setTimeout(() => this._service?.refreshPeers(), 300)
+          onComplete: () => this._service?.refreshPeers(),
+        } as any);
       };
     }
 
