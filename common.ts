@@ -74,15 +74,6 @@ export function ensureAlias(value: string): string {
   return trimmed.length > 0 ? trimmed : makeDefaultAlias();
 }
 
-export function generateFingerprint(): string {
-  return GLib.uuid_string_random();
-}
-
-export function ensureFingerprint(value: string): string {
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : generateFingerprint();
-}
-
 export function sanitizeFileName(fileName: string): string {
   const cleaned = fileName.replace(/[\\/\\0]/g, "-").trim();
   return cleaned.length > 0 ? cleaned : "localsend-file";

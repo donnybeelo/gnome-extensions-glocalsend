@@ -20,7 +20,6 @@ import {
   decodeJson,
   encodeJson,
   ensureAlias,
-  ensureFingerprint,
   getDefaultDownloadFolder,
   sanitizeFileName,
   type DeviceInfo,
@@ -54,6 +53,7 @@ export interface LocalSendServiceCallbacks {
   onNotification(summary: string, body: string, actionUri?: string): void;
   onIncomingTransfer(request: IncomingTransferRequest): Promise<boolean>;
   onTextReceived(sender: LocalSendPeer, text: string): void;
+  requestPin(peer: LocalSendPeer, retry: boolean): Promise<string | null>;
 }
 
 interface AcceptedIncomingFile {
@@ -126,6 +126,7 @@ export class LocalSendService {
   private _autoDisableSourceId: number | null = null;
   private _alias: string;
   private _fingerprint: string;
+  private _clientCert: Gio.TlsCertificate;
   private _port: number;
   private _httpPort: number;
   private _downloadFolder: string;
@@ -141,13 +142,12 @@ export class LocalSendService {
   constructor(settings: Gio.Settings, callbacks: LocalSendServiceCallbacks) {
     this._settings = settings;
     this._callbacks = callbacks;
+    this._clientCert = this._loadClientCertificate();
     this._session = new Soup.Session();
-    this._server = new Soup.Server();
+    this._server = new Soup.Server({ tls_certificate: this._clientCert });
 
     this._alias = ensureAlias(this._settings.get_string("alias"));
-    this._fingerprint = ensureFingerprint(
-      this._settings.get_string("fingerprint"),
-    );
+    this._fingerprint = this._certFingerprint();
     this._port = this._settings.get_int("port") || DEFAULT_PORT;
     this._httpPort = this._port;
     this._downloadFolder = this._resolveDownloadFolder();
@@ -158,6 +158,42 @@ export class LocalSendService {
     this._settings.set_string("download-folder", this._downloadFolder);
 
     this._installServerHandlers();
+  }
+
+  private _loadClientCertificate(): Gio.TlsCertificate {
+    const dir = GLib.build_filenamev([GLib.get_user_data_dir(), "glocalsend"]);
+    const cert = GLib.build_filenamev([dir, "cert.pem"]);
+    const key = GLib.build_filenamev([dir, "key.pem"]);
+    if (!GLib.file_test(cert, GLib.FileTest.EXISTS)) {
+      GLib.mkdir_with_parents(dir, 0o700);
+      Gio.Subprocess.new(
+        [
+          "openssl",
+          "req",
+          "-x509",
+          "-newkey",
+          "rsa:2048",
+          "-nodes",
+          "-keyout",
+          key,
+          "-out",
+          cert,
+          "-days",
+          "3650",
+          "-subj",
+          "/CN=GLocalSend",
+        ],
+        Gio.SubprocessFlags.STDOUT_SILENCE | Gio.SubprocessFlags.STDERR_SILENCE,
+      ).wait_check(null);
+    }
+    return Gio.TlsCertificate.new_from_files(cert, key);
+  }
+
+  private _certFingerprint(): string {
+    return GLib.compute_checksum_for_data(
+      GLib.ChecksumType.SHA256,
+      (this._clientCert as any).certificate,
+    )!.toUpperCase();
   }
 
   get enabled(): boolean {
@@ -241,9 +277,7 @@ export class LocalSendService {
 
     this._port = this._settings.get_int("port") || DEFAULT_PORT;
     this._alias = ensureAlias(this._settings.get_string("alias"));
-    this._fingerprint = ensureFingerprint(
-      this._settings.get_string("fingerprint"),
-    );
+    this._fingerprint = this._certFingerprint();
     this._downloadFolder = this._resolveDownloadFolder();
 
     this._settings.set_string("alias", this._alias);
@@ -486,7 +520,7 @@ export class LocalSendService {
     return {
       ...this._buildInfoPayload(),
       port: this._httpPort,
-      protocol: ProtocolType.Http,
+      protocol: ProtocolType.Https,
     };
   }
 
@@ -701,13 +735,6 @@ export class LocalSendService {
         return;
       }
 
-      if (this._incomingSession !== null) {
-        this._respondJson(message, 409, {
-          message: "Blocked by another session",
-        });
-        return;
-      }
-
       const files = Object.values(request.files);
       if (files.length === 0) {
         this._respondJson(message, 400, {
@@ -729,6 +756,24 @@ export class LocalSendService {
         lastSeenAt: Date.now(),
       };
 
+      const [first] = files;
+      if (
+        files.length === 1 &&
+        first.fileType === "text/plain" &&
+        typeof first.preview === "string"
+      ) {
+        this._respondJson(message, 204, null);
+        this._callbacks.onTextReceived(peer, first.preview);
+        return;
+      }
+
+      if (this._incomingSession !== null) {
+        this._respondJson(message, 409, {
+          message: "Blocked by another session",
+        });
+        return;
+      }
+
       const accepted = await this._callbacks.onIncomingTransfer({
         sender: peer,
         files,
@@ -739,6 +784,14 @@ export class LocalSendService {
         this._respondJson(message, 403, {
           message: REJECT_MESSAGE,
         });
+        return;
+      }
+
+      if (!this._isConnected(message)) {
+        this._callbacks.onNotification(
+          "LocalSend",
+          `${peer.alias} cancelled the transfer.`,
+        );
         return;
       }
 
@@ -813,23 +866,6 @@ export class LocalSendService {
       }
 
       const bytes = this._requestBodyBytes(message);
-
-      if (fileEntry.file.fileType === "text/plain") {
-        fileEntry.received = true;
-        this._respondJson(message, 200, null);
-        if (
-          [...this._incomingSession.files.values()].every((e) => e.received)
-        ) {
-          const { sender } = this._incomingSession;
-          this._incomingSession = null;
-          this._callbacks.onTextReceived(
-            sender,
-            new TextDecoder().decode(bytes),
-          );
-        }
-        return;
-      }
-
       const fileName = sanitizeFileName(fileEntry.file.fileName);
       const targetPath = this._makeUniquePath(
         this._incomingSession.destinationFolder,
@@ -876,6 +912,16 @@ export class LocalSendService {
     this._respondJson(message, 200, null);
   }
 
+  private _isConnected(message: any): boolean {
+    const socket: Gio.Socket | null = message.get_socket();
+    return (
+      socket !== null &&
+      socket.condition_check(
+        GLib.IOCondition.IN | GLib.IOCondition.HUP | GLib.IOCondition.ERR,
+      ) === 0
+    );
+  }
+
   private _requestBodyBytes(message: any): Uint8Array {
     return message.get_request_body().flatten().get_data() ?? new Uint8Array();
   }
@@ -915,20 +961,37 @@ export class LocalSendService {
       };
     }
 
-    const prepare = await this._requestJson(
-      "POST",
-      peer,
-      "/api/localsend/v2/prepare-upload",
-      {
-        info: this._buildRegisterPayload(),
-        files,
-      } satisfies PrepareUploadRequest,
-    );
+    let pin: string | null = null;
+    let prepare: { status: number; body: Uint8Array };
+    for (;;) {
+      const pinQuery = pin === null ? "" : `?pin=${encodeURIComponent(pin)}`;
+      prepare = await this._requestJson(
+        "POST",
+        peer,
+        `/api/localsend/v2/prepare-upload${pinQuery}`,
+        {
+          info: this._buildRegisterPayload(),
+          files,
+        } satisfies PrepareUploadRequest,
+      );
+      if (prepare.status !== 401) break;
 
-    if (prepare.status === 204 || prepare.status === 403) {
+      pin = await this._callbacks.requestPin(peer, pin !== null);
+      if (pin === null) return;
+    }
+
+    if (prepare.status === 204) {
+      this._callbacks.onNotification("LocalSend", `Sent to ${peer.alias}.`);
+      return;
+    }
+
+    if (prepare.status === 403) {
       this._callbacks.onNotification("LocalSend", REJECT_MESSAGE);
       return;
     }
+
+    if (prepare.status === 429)
+      throw new Error("Too many incorrect PIN attempts. Try again later.");
 
     if (prepare.status !== 200)
       throw new Error(
@@ -975,8 +1038,10 @@ export class LocalSendService {
       encodeJson(payload),
     );
 
-    if (peer.protocol === ProtocolType.Https)
+    if (peer.protocol === ProtocolType.Https) {
       message.connect("accept-certificate", () => true);
+      message.set_tls_client_certificate(this._clientCert);
+    }
 
     return this._sendAndRead(message);
   }
@@ -993,8 +1058,10 @@ export class LocalSendService {
       GLib.Bytes.new(bytes),
     );
 
-    if (peer.protocol === ProtocolType.Https)
+    if (peer.protocol === ProtocolType.Https) {
       message.connect("accept-certificate", () => true);
+      message.set_tls_client_certificate(this._clientCert);
+    }
 
     const response = await this._sendAndRead(message);
     if (response.status !== 200)
@@ -1055,7 +1122,7 @@ export class LocalSendService {
 
   private _listenOnHttpPort(preferredPort: number): number {
     const tryListen = (port: number): number => {
-      if (!this._server.listen_all(port, 0))
+      if (!this._server.listen_all(port, Soup.ServerListenOptions.HTTPS))
         throw new Error(`Failed to listen on port ${port}.`);
 
       const uris = this._server.get_uris();

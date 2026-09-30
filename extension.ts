@@ -482,8 +482,6 @@ export default class LocalSendCompanionExtension extends Extension {
       },
       onIncomingTransfer: async (request) => {
         if (this._settings!.get_boolean(KEY_AUTO_ACCEPT)) return true;
-        if (request.files.every((f) => f.fileType === "text/plain"))
-          return true;
 
         const dialog = this._ensureIncomingDialog();
         return await dialog.prompt(request.sender, request);
@@ -491,6 +489,13 @@ export default class LocalSendCompanionExtension extends Extension {
       onTextReceived: (sender, text) => {
         new ReceivedTextDialog().present(sender.alias, text);
       },
+      requestPin: (peer, retry) =>
+        this._ensureTextPromptDialog().prompt(
+          `PIN for ${peer.alias}`,
+          retry
+            ? "Incorrect PIN. Try again."
+            : `${peer.alias} needs a PIN before it will accept files.`,
+        ),
     });
 
     this._indicator = new LocalSendIndicator(this._iconPath);
