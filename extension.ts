@@ -14,6 +14,7 @@ import { Extension } from "resource:///org/gnome/shell/extensions/extension.js";
 
 import { DeviceType, formatBytes, KEY_AUTO_ACCEPT } from "./common.js";
 import {
+  CERTIFICATE_COMMAND,
   type IncomingTransferRequest,
   type LocalSendPeer,
   LocalSendService,
@@ -355,6 +356,62 @@ const ReceivedTextDialog = GObject.registerClass(
   },
 );
 
+const CertificateDialog = GObject.registerClass(
+  { GTypeName: "GLocalSend_CertificateDialog" },
+  class CertificateDialog extends ModalDialog.ModalDialog {
+    constructor() {
+      super({
+        shellReactive: true,
+        actionMode: Shell.ActionMode.ALL,
+        shouldFadeIn: true,
+        shouldFadeOut: true,
+        destroyOnClose: true,
+      });
+
+      const title = new St.Label({
+        style_class: "prompt-dialog-title",
+        x_align: Clutter.ActorAlign.START,
+        text: "Certificate needed",
+      });
+      const description = new St.Label({
+        style_class: "prompt-dialog-description",
+        x_align: Clutter.ActorAlign.START,
+        text:
+          "LocalSend needs a certificate to connect securely. " +
+          "Run this command in a terminal, then turn LocalSend on again:",
+      });
+      description.clutter_text.line_wrap = true;
+      const command = new St.Entry({
+        style: "font-family: monospace; margin-top: 12px;",
+        x_expand: true,
+        can_focus: true,
+        text: CERTIFICATE_COMMAND,
+      });
+      command.clutter_text.editable = false;
+      command.clutter_text.single_line_mode = false;
+
+      this.contentLayout.add_child(title);
+      this.contentLayout.add_child(description);
+      this.contentLayout.add_child(command);
+
+      this.setButtons([
+        { label: "Close", action: () => this.close() },
+        {
+          label: "Copy Command",
+          default: true,
+          action: () => {
+            St.Clipboard.get_default().set_text(
+              St.ClipboardType.CLIPBOARD,
+              CERTIFICATE_COMMAND,
+            );
+            this.close();
+          },
+        },
+      ] as any);
+    }
+  },
+);
+
 const IncomingTransferDialog = GObject.registerClass(
   { GTypeName: "GLocalSend_IncomingTransferDialog" },
   class IncomingTransferDialog extends ModalDialog.ModalDialog {
@@ -488,6 +545,9 @@ export default class LocalSendCompanionExtension extends Extension {
       },
       onTextReceived: (sender, text) => {
         new ReceivedTextDialog().present(sender.alias, text);
+      },
+      onCertificateMissing: () => {
+        new CertificateDialog().open();
       },
       requestPin: (peer, retry) =>
         this._ensureTextPromptDialog().prompt(

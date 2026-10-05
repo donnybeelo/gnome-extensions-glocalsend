@@ -53,6 +53,7 @@ export interface LocalSendServiceCallbacks {
   onNotification(summary: string, body: string, actionUri?: string): void;
   onIncomingTransfer(request: IncomingTransferRequest): Promise<boolean>;
   onTextReceived(sender: LocalSendPeer, text: string): void;
+  onCertificateMissing(): void;
   requestPin(peer: LocalSendPeer, retry: boolean): Promise<string | null>;
 }
 
@@ -87,6 +88,16 @@ const HTTP_STATUS_PHRASES: Record<number, string> = {
   500: "Internal Server Error",
 };
 const PEER_STALE_MS = 180_000;
+const CERT_DIR = GLib.build_filenamev([GLib.get_user_data_dir(), "glocalsend"]);
+const CERT_PATH = GLib.build_filenamev([CERT_DIR, "cert.pem"]);
+const KEY_PATH = GLib.build_filenamev([CERT_DIR, "key.pem"]);
+
+export const CERTIFICATE_COMMAND =
+  `mkdir -p -m 700 ${GLib.shell_quote(CERT_DIR)} &&\n` +
+  "openssl req -x509 -newkey rsa:2048 -nodes -days 3650 \\\n" +
+  "  -subj /CN=GLocalSend \\\n" +
+  `  -keyout ${GLib.shell_quote(KEY_PATH)} \\\n` +
+  `  -out ${GLib.shell_quote(CERT_PATH)}`;
 const REJECT_MESSAGE = "The recipient has rejected the request.";
 
 function parseRequestUrl(message: any): {
@@ -126,7 +137,7 @@ export class LocalSendService {
   private _autoDisableSourceId: number | null = null;
   private _alias: string;
   private _fingerprint: string;
-  private _clientCert: Gio.TlsCertificate;
+  private _clientCert: Gio.TlsCertificate | null = null;
   private _port: number;
   private _httpPort: number;
   private _downloadFolder: string;
@@ -142,12 +153,11 @@ export class LocalSendService {
   constructor(settings: Gio.Settings, callbacks: LocalSendServiceCallbacks) {
     this._settings = settings;
     this._callbacks = callbacks;
-    this._clientCert = this._loadClientCertificate();
     this._session = new Soup.Session();
-    this._server = new Soup.Server({ tls_certificate: this._clientCert });
+    this._server = new Soup.Server();
 
     this._alias = ensureAlias(this._settings.get_string("alias"));
-    this._fingerprint = this._certFingerprint();
+    this._fingerprint = this._settings.get_string("fingerprint");
     this._port = this._settings.get_int("port") || DEFAULT_PORT;
     this._httpPort = this._port;
     this._downloadFolder = this._resolveDownloadFolder();
@@ -160,39 +170,23 @@ export class LocalSendService {
     this._installServerHandlers();
   }
 
+  get hasCertificate(): boolean {
+    return (
+      GLib.file_test(CERT_PATH, GLib.FileTest.EXISTS) &&
+      GLib.file_test(KEY_PATH, GLib.FileTest.EXISTS)
+    );
+  }
+
   private _loadClientCertificate(): Gio.TlsCertificate {
-    const dir = GLib.build_filenamev([GLib.get_user_data_dir(), "glocalsend"]);
-    const cert = GLib.build_filenamev([dir, "cert.pem"]);
-    const key = GLib.build_filenamev([dir, "key.pem"]);
-    if (!GLib.file_test(cert, GLib.FileTest.EXISTS)) {
-      GLib.mkdir_with_parents(dir, 0o700);
-      Gio.Subprocess.new(
-        [
-          "openssl",
-          "req",
-          "-x509",
-          "-newkey",
-          "rsa:2048",
-          "-nodes",
-          "-keyout",
-          key,
-          "-out",
-          cert,
-          "-days",
-          "3650",
-          "-subj",
-          "/CN=GLocalSend",
-        ],
-        Gio.SubprocessFlags.STDOUT_SILENCE | Gio.SubprocessFlags.STDERR_SILENCE,
-      ).wait_check(null);
-    }
-    return Gio.TlsCertificate.new_from_files(cert, key);
+    this._clientCert ??= Gio.TlsCertificate.new_from_files(CERT_PATH, KEY_PATH);
+    this._server.tls_certificate = this._clientCert;
+    return this._clientCert;
   }
 
   private _certFingerprint(): string {
     return GLib.compute_checksum_for_data(
       GLib.ChecksumType.SHA256,
-      (this._clientCert as any).certificate,
+      (this._loadClientCertificate() as any).certificate,
     )!.toUpperCase();
   }
 
@@ -221,6 +215,11 @@ export class LocalSendService {
   toggleEnabled(): void {
     if (this.enabled) {
       this.stop();
+      return;
+    }
+
+    if (!this.hasCertificate) {
+      this._callbacks.onCertificateMissing();
       return;
     }
 
