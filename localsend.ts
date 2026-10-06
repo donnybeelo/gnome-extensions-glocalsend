@@ -10,11 +10,13 @@ Gio._promisify(
 Gio._promisify(Gio.File.prototype, "load_bytes_async", "load_bytes_finish");
 
 import {
+  CERT_PATH,
   DEFAULT_MULTICAST_GROUP,
   DEFAULT_PORT,
   DeviceType,
   KEY_AUTO_DISABLE_ENABLED,
   KEY_AUTO_DISABLE_MINUTES,
+  KEY_PATH,
   PROTOCOL_VERSION,
   ProtocolType,
   decodeJson,
@@ -88,16 +90,6 @@ const HTTP_STATUS_PHRASES: Record<number, string> = {
   500: "Internal Server Error",
 };
 const PEER_STALE_MS = 180_000;
-const CERT_DIR = GLib.build_filenamev([GLib.get_user_data_dir(), "glocalsend"]);
-const CERT_PATH = GLib.build_filenamev([CERT_DIR, "cert.pem"]);
-const KEY_PATH = GLib.build_filenamev([CERT_DIR, "key.pem"]);
-
-export const CERTIFICATE_COMMAND =
-  `mkdir -p -m 700 ${GLib.shell_quote(CERT_DIR)} &&\n` +
-  "openssl req -x509 -newkey rsa:2048 -nodes -days 3650 \\\n" +
-  "  -subj /CN=GLocalSend \\\n" +
-  `  -keyout ${GLib.shell_quote(KEY_PATH)} \\\n` +
-  `  -out ${GLib.shell_quote(CERT_PATH)}`;
 const REJECT_MESSAGE = "The recipient has rejected the request.";
 
 function parseRequestUrl(message: any): {

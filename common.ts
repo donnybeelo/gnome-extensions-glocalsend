@@ -15,6 +15,13 @@ export const KEY_AUTO_ACCEPT = "auto-accept";
 export const KEY_AUTO_DISABLE_ENABLED = "auto-disable-enabled";
 export const KEY_AUTO_DISABLE_MINUTES = "auto-disable-minutes";
 
+export const CERT_DIR = GLib.build_filenamev([
+  GLib.get_user_data_dir(),
+  "glocalsend",
+]);
+export const CERT_PATH = GLib.build_filenamev([CERT_DIR, "cert.pem"]);
+export const KEY_PATH = GLib.build_filenamev([CERT_DIR, "key.pem"]);
+
 export enum ProtocolType {
   Http = "http",
   Https = "https",
