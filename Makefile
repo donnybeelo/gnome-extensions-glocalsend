@@ -39,4 +39,5 @@ update-latest:
 	git push origin latest
 	make pack
 	xdg-open . &
+	sleep 0.5
 	xdg-open "https://extensions.gnome.org/upload/" &
