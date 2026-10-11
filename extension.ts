@@ -167,7 +167,6 @@ const TextPromptDialog = GObject.registerClass(
       });
 
       this._content = new St.BoxLayout({
-        vertical: true,
         orientation: Clutter.Orientation.VERTICAL,
         x_expand: true,
         y_expand: true,
@@ -374,7 +373,6 @@ const IncomingTransferDialog = GObject.registerClass(
       });
 
       this._content = new St.BoxLayout({
-        vertical: true,
         orientation: Clutter.Orientation.VERTICAL,
         x_expand: true,
         y_expand: true,
