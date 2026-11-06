@@ -9,6 +9,12 @@ Gio._promisify(
 );
 Gio._promisify(Gio.File.prototype, "load_bytes_async", "load_bytes_finish");
 
+Gio._promisify(
+  Gio.File.prototype,
+  "load_bytes_async",
+  "load_bytes_finish",
+);
+
 import {
   CERT_PATH,
   DEFAULT_MULTICAST_GROUP,
@@ -368,7 +374,7 @@ export class LocalSendService {
           Gio.FileQueryInfoFlags.NONE,
           null,
         );
-        const [bytes] = await file.load_bytes_async(this._cancellable);
+        const [bytes] = await file.load_bytes_async(null);
 
         return {
           fileName: sanitizeFileName(info.get_display_name()),
